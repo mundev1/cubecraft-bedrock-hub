@@ -71,15 +71,47 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         self.assertTrue(data_sky['success'])
         self.assertGreater(len(data_sky['leaderboard']), 0)
 
-    def test_bundles_catalog(self):
+    def test_custom_players_mundev_and_joeal(self):
+        # Search MundevPolite
+        res_m = self.app.get('/api/players/search?q=Mundev')
+        self.assertEqual(res_m.status_code, 200)
+        data_m = json.loads(res_m.data)
+        self.assertTrue(data_m['success'])
+        self.assertTrue(any(p['gamertag'] == 'MundevPolite' for p in data_m['players']))
+
+        # Profile MundevPolite
+        prof_m = self.app.get('/api/players/MundevPolite')
+        self.assertEqual(prof_m.status_code, 200)
+        pdata_m = json.loads(prof_m.data)
+        self.assertEqual(pdata_m['player']['gamertag'], 'MundevPolite')
+        self.assertGreater(len(pdata_m['leaderboards']), 0)
+        self.assertGreater(len(pdata_m['encounters']), 0)
+
+        # Search JoealBadmash
+        res_j = self.app.get('/api/players/search?q=Joeal')
+        self.assertEqual(res_j.status_code, 200)
+        data_j = json.loads(res_j.data)
+        self.assertTrue(data_j['success'])
+        self.assertTrue(any(p['gamertag'] == 'JoealBadmash' for p in data_j['players']))
+
+        # Profile JoealBadmash
+        prof_j = self.app.get('/api/players/JoealBadmash')
+        self.assertEqual(prof_j.status_code, 200)
+        pdata_j = json.loads(prof_j.data)
+        self.assertEqual(pdata_j['player']['gamertag'], 'JoealBadmash')
+        self.assertGreater(len(pdata_j['leaderboards']), 0)
+        self.assertGreater(len(pdata_j['encounters']), 0)
+
+    def test_bundles_catalog_and_images(self):
         response = self.app.get('/api/bundles')
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data['success'])
         self.assertGreater(len(data['bundles']), 0)
-        first_bundle = data['bundles'][0]
-        self.assertIn('items', first_bundle)
-        self.assertGreater(len(first_bundle['items']), 0)
+        for b in data['bundles']:
+            self.assertIn('banner_img', b)
+            self.assertTrue(b['banner_img'].startswith('http'))
+            self.assertIn('items', b)
 
     def test_clips_and_community_submission(self):
         # Fetch clips

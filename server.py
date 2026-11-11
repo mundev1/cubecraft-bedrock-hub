@@ -10,12 +10,17 @@ import os
 import re
 import urllib.request
 from datetime import datetime
-from database import get_db, init_db, sync_cubecraft_leaderboards, seed_bundles_and_clips, parse_leaderboard_info, parse_minecraft_rank
+from database import (
+    get_db, init_db, sync_cubecraft_leaderboards,
+    seed_bundles_and_clips, seed_custom_players,
+    parse_leaderboard_info, parse_minecraft_rank
+)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
 # Ensure database is initialized
 init_db()
+seed_custom_players()
 seed_bundles_and_clips()
 
 @app.route('/')
@@ -422,7 +427,18 @@ def get_recent_encounters():
 def search_players():
     q = request.args.get('q', '').strip()
     if not q:
-        return jsonify({"success": True, "players": []})
+        # Return featured community players when search query is empty
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT p.*,
+                   (SELECT COUNT(*) FROM encounters WHERE player_gamertag = p.gamertag) as encounter_count
+            FROM players p
+            WHERE LOWER(p.gamertag) IN ('mundevpolite', 'joealbadmash')
+        ''')
+        rows = cursor.fetchall()
+        conn.close()
+        return jsonify({"success": True, "players": [dict(r) for r in rows]})
 
     conn = get_db()
     cursor = conn.cursor()
@@ -431,7 +447,13 @@ def search_players():
                (SELECT COUNT(*) FROM encounters WHERE player_gamertag = p.gamertag) as encounter_count
         FROM players p
         WHERE LOWER(p.gamertag) LIKE LOWER(?)
-        ORDER BY p.total_games DESC
+        ORDER BY 
+            CASE 
+                WHEN LOWER(p.gamertag) = 'mundevpolite' THEN 1
+                WHEN LOWER(p.gamertag) = 'joealbadmash' THEN 2
+                ELSE 3 
+            END,
+            p.total_games DESC
         LIMIT 15
     ''', (f'%{q}%',))
     rows = cursor.fetchall()

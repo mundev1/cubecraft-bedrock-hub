@@ -403,24 +403,24 @@ async function loadBundles() {
   }
 }
 
+// Global Player Navigation Helper
+window.navigateToPlayer = function(gamertag) {
+  switchView('encounters');
+  loadPlayerProfile(gamertag);
+  window.location.hash = `player/${encodeURIComponent(gamertag)}`;
+};
+
 function renderBundles() {
   const container = document.getElementById('bundles-grid');
   if (!container) return;
 
-  const bgGradients = {
-    'Mythic': 'linear-gradient(135deg, #2e1065 0%, #0b0f19 100%)',
-    'Legendary': 'linear-gradient(135deg, #451a03 0%, #0b0f19 100%)',
-    'Epic': 'linear-gradient(135deg, #083344 0%, #0b0f19 100%)',
-    'Rare': 'linear-gradient(135deg, #064e3b 0%, #0b0f19 100%)'
-  };
-
   container.innerHTML = state.bundles.map(b => {
     const rarityClass = `rarity-${(b.rarity || 'epic').toLowerCase()}`;
-    const gradient = bgGradients[b.rarity] || bgGradients['Epic'];
+    const bannerUrl = b.banner_img || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=800&q=80';
 
     return `
       <div class="bundle-card">
-        <div class="bundle-banner" style="background: ${gradient};">
+        <div class="bundle-banner" style="background-image: url('${bannerUrl}');">
           <span class="bundle-badge ${b.is_featured ? 'featured' : 'new'}">${sanitizeHTML(b.badge || 'Store Drop')}</span>
           <div class="bundle-timer" data-expiry="${b.expiry_date}">
             ⏳ <span class="timer-display">Calculating...</span>
@@ -495,7 +495,14 @@ function inspectBundle(bundleId) {
   const body = document.getElementById('bundle-modal-body');
 
   title.innerText = bundle.title;
+  const bannerImg = bundle.banner_img || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=800&q=80';
+
   body.innerHTML = `
+    <div style="height: 180px; border-radius: var(--radius-md); background-size: cover; background-position: center; background-image: url('${bannerImg}'); margin-bottom: 1.25rem; position: relative; overflow: hidden; border: 1px solid var(--border-subtle);">
+      <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6, 8, 13, 0.1) 0%, rgba(11, 15, 25, 0.9) 100%); display: flex; align-items: flex-end; padding: 1rem;">
+        <span class="bundle-badge ${bundle.is_featured ? 'featured' : 'new'}">${sanitizeHTML(bundle.badge || 'Store Drop')}</span>
+      </div>
+    </div>
     <div style="margin-bottom: 1.25rem;">
       <span class="bundle-rarity rarity-${(bundle.rarity || 'epic').toLowerCase()}">${bundle.rarity} Edition</span>
       <p style="color: var(--text-muted); margin-top: 0.5rem; font-size: 0.92rem;">${sanitizeHTML(bundle.description)}</p>
@@ -1007,17 +1014,81 @@ document.querySelectorAll('.enc-tag-filter').forEach(btn => {
   });
 });
 
-// Search Autocomplete for 800+ Gamertags
+// Search Autocomplete for 800+ Gamertags & Featured Personalities
 function initSearchAutocomplete() {
   const searchInput = document.getElementById('global-gamertag-search');
   const resultsDropdown = document.getElementById('search-autocomplete-dropdown');
   if (!searchInput || !resultsDropdown) return;
 
+  const renderDropdown = (players, headerText = '') => {
+    if (!players || players.length === 0) {
+      resultsDropdown.innerHTML = `
+        <div style="padding: 0.75rem; font-size: 0.82rem; color: var(--text-muted); text-align: center;">
+          No matching player found.
+          <button class="btn btn-outline btn-sm" style="margin-top: 0.5rem; width: 100%;" onclick="openEncounterModal('${sanitizeHTML(searchInput.value.trim())}'); document.getElementById('search-autocomplete-dropdown').style.display='none';">
+            + Log First Encounter
+          </button>
+        </div>
+      `;
+      resultsDropdown.style.display = 'block';
+      return;
+    }
+
+    resultsDropdown.innerHTML = (headerText ? `
+      <div style="padding: 0.4rem 0.85rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-subtle); background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border-subtle);">
+        ${headerText}
+      </div>
+    ` : '') + players.map(p => {
+      const avatarHtml = p.avatar_icon ? `
+        <img src="${p.avatar_icon}" style="width: 24px; height: 24px; object-fit: contain; border-radius: 4px;" alt="${sanitizeHTML(p.gamertag)}" />
+      ` : `
+        <span class="player-mini-avatar" style="background: ${p.avatar_color || '#00e5ff'}; width: 24px; height: 24px; font-size: 0.7rem;">${p.gamertag.charAt(0)}</span>
+      `;
+
+      return `
+        <div class="search-result-item" style="padding: 0.6rem 0.85rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle);" data-gamertag="${p.gamertag}">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            ${avatarHtml}
+            <div>
+              <span style="font-weight: 600; color: #fff;">${sanitizeHTML(p.gamertag)}</span>
+              <span style="font-size: 0.7rem; color: var(--text-subtle); margin-left: 4px;">(${sanitizeHTML(p.rank_title || 'Player')})</span>
+            </div>
+          </div>
+          <span class="rep-pill positive" style="font-size: 0.65rem;">⭐ ${p.reputation_score}% Rep</span>
+        </div>
+      `;
+    }).join('');
+
+    resultsDropdown.style.display = 'block';
+
+    resultsDropdown.querySelectorAll('.search-result-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const tag = item.getAttribute('data-gamertag');
+        searchInput.value = '';
+        resultsDropdown.style.display = 'none';
+        navigateToPlayer(tag);
+      });
+    });
+  };
+
+  // Show featured players on focus if input is empty
+  searchInput.addEventListener('focus', async () => {
+    if (!searchInput.value.trim()) {
+      try {
+        const res = await fetch('/api/players/search?q=');
+        const data = await res.json();
+        if (data.success && data.players.length > 0) {
+          renderDropdown(data.players, '⭐ Featured Community Profiles');
+        }
+      } catch (e) {}
+    }
+  });
+
   let debounceTimer;
   searchInput.addEventListener('input', () => {
     clearTimeout(debounceTimer);
     const query = searchInput.value.trim();
-    if (query.length < 2) {
+    if (!query) {
       resultsDropdown.style.display = 'none';
       return;
     }
@@ -1026,51 +1097,13 @@ function initSearchAutocomplete() {
       try {
         const res = await fetch(`/api/players/search?q=${encodeURIComponent(query)}`);
         const data = await res.json();
-        if (data.success && data.players.length > 0) {
-          resultsDropdown.innerHTML = data.players.map(p => {
-            const avatarHtml = p.avatar_icon ? `
-              <img src="${p.avatar_icon}" style="width: 24px; height: 24px; object-fit: contain;" alt="${sanitizeHTML(p.gamertag)}" />
-            ` : `
-              <span class="player-mini-avatar" style="background: ${p.avatar_color || '#00e5ff'}; width: 24px; height: 24px; font-size: 0.7rem;">${p.gamertag.charAt(0)}</span>
-            `;
-
-            return `
-              <div class="search-result-item" style="padding: 0.6rem 0.85rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle);" data-gamertag="${p.gamertag}">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                  ${avatarHtml}
-                  <span style="font-weight: 600; color: #fff;">${sanitizeHTML(p.gamertag)}</span>
-                  <span style="font-size: 0.7rem; color: var(--text-subtle);">(${sanitizeHTML(p.rank_title || 'Player')})</span>
-                </div>
-                <span class="rep-pill positive" style="font-size: 0.65rem;">⭐ ${p.reputation_score}% Rep</span>
-              </div>
-            `;
-          }).join('');
-
-          resultsDropdown.style.display = 'block';
-
-          resultsDropdown.querySelectorAll('.search-result-item').forEach(item => {
-            item.addEventListener('click', () => {
-              const tag = item.getAttribute('data-gamertag');
-              searchInput.value = '';
-              resultsDropdown.style.display = 'none';
-              window.location.hash = `player/${encodeURIComponent(tag)}`;
-            });
-          });
-        } else {
-          resultsDropdown.innerHTML = `
-            <div style="padding: 0.75rem; font-size: 0.82rem; color: var(--text-muted); text-align: center;">
-              No local record for "${sanitizeHTML(query)}".
-              <button class="btn btn-outline btn-sm" style="margin-top: 0.5rem; width: 100%;" onclick="openEncounterModal('${sanitizeHTML(query)}'); document.getElementById('search-autocomplete-dropdown').style.display='none';">
-                + Log First Encounter
-              </button>
-            </div>
-          `;
-          resultsDropdown.style.display = 'block';
+        if (data.success) {
+          renderDropdown(data.players);
         }
       } catch (err) {
         console.error('Search error:', err);
       }
-    }, 180);
+    }, 160);
   });
 
   document.addEventListener('click', (e) => {
