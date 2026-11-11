@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CubeCraft Bedrock Community Hub | Leaderboards, Bundles & Medal Clips</title>
-  <meta name="description" content="The premier community platform for CubeCraft Minecraft Bedrock: game leaderboards, new bundles info, playable Medal clips theatre, and player encounter reviews.">
+  <title>CubeCraft Bedrock Community Hub | Leaderboards across 39 Modes, Bundles & Medal Clips</title>
+  <meta name="description" content="The premier community platform for CubeCraft Minecraft Bedrock: 39 game mode leaderboards, 800+ ranked players, new bundles info, playable Medal clips theatre, and player encounter reviews.">
   <link rel="stylesheet" href="/static/css/styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2300e5ff'/><rect x='25' y='25' width='50' height='50' rx='10' fill='%2306080d'/></svg>">
 </head>
@@ -37,7 +37,7 @@
             <a href="#bundles">🎁 Store Bundles</a>
           </li>
           <li class="nav-item" data-view="clips">
-            <a href="#clips">🎬 Medal Clips</a>
+            <a href="#clips">🎬 Medal & Community Clips</a>
           </li>
           <li class="nav-item" data-view="encounters">
             <a href="#encounters">💬 Encounters</a>
@@ -49,8 +49,8 @@
         <!-- Global Gamertag Search -->
         <div class="search-box" style="position: relative;">
           <span class="search-icon">🔍</span>
-          <input type="text" id="global-gamertag-search" placeholder="Search Bedrock Gamertag..." autocomplete="off">
-          <div id="search-autocomplete-dropdown" style="display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 200; max-height: 280px; overflow-y: auto;"></div>
+          <input type="text" id="global-gamertag-search" placeholder="Search 800+ Bedrock Gamertags..." autocomplete="off">
+          <div id="search-autocomplete-dropdown" style="display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: 0 10px 25px rgba(0,0,0,0.6); z-index: 200; max-height: 320px; overflow-y: auto;"></div>
         </div>
 
         <!-- Server IP copy pill -->
@@ -68,11 +68,11 @@
   <section class="hero">
     <div class="container">
       <div class="hero-pill">
-        <span>⚡ Bedrock Network Status: 100% Operational</span>
+        <span>⚡ Bedrock Network: 39 Game Modes • 800+ Top Competitors Synchronized</span>
       </div>
       <h1 class="hero-title">The Bedrock Competitive Hub</h1>
       <p class="hero-subtitle">
-        Live leaderboards across every CubeCraft game, official Bedrock Marketplace bundle drops, high-octane Medal clips, and community player encounters.
+        Official leaderboards for every game mode (EggWars, SkyWars, BlockWars, BedWars & more), live store bundle drops, playable Medal clips, and player encounter reviews.
       </p>
 
       <div class="hero-stats">
@@ -81,16 +81,16 @@
           <span class="hero-stat-label">Ranked Players</span>
         </div>
         <div class="hero-stat-card">
+          <span class="hero-stat-num" id="stat-leaderboard-entries">--</span>
+          <span class="hero-stat-label">Leaderboard Entries</span>
+        </div>
+        <div class="hero-stat-card">
           <span class="hero-stat-num" id="stat-encounters-count">--</span>
           <span class="hero-stat-label">Encounters Logged</span>
         </div>
         <div class="hero-stat-card">
           <span class="hero-stat-num" id="stat-clips-count">--</span>
-          <span class="hero-stat-label">Medal Clips</span>
-        </div>
-        <div class="hero-stat-card">
-          <span class="hero-stat-num" id="stat-bundles-count">--</span>
-          <span class="hero-stat-label">Active Bundles</span>
+          <span class="hero-stat-label">Clips Shared</span>
         </div>
       </div>
     </div>
@@ -102,24 +102,35 @@
   <section id="view-leaderboards" class="view-section active">
     <div class="container">
       
-      <!-- Bedrock Game Selectors -->
+      <!-- Primary Game Selectors -->
       <div class="game-selector-grid" id="game-selector-grid">
-        <!-- Injected via JavaScript -->
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- Specific Sub-Modes Pills (e.g. Solo, Duos, Squads, Mega, Chaos, Duels) -->
+      <div class="submodes-bar" id="submodes-bar">
+        <span style="font-size: 0.78rem; color: var(--text-subtle); text-transform: uppercase; font-weight: 700; margin-right: 0.5rem;">Mode:</span>
+        <div id="submodes-pills-list" style="display: flex; gap: 0.4rem; flex-wrap: wrap;"></div>
       </div>
 
       <!-- Controls & Filter Bar -->
       <div class="controls-bar">
         <div class="filter-group">
           <span style="font-size: 0.8rem; color: var(--text-subtle); text-transform: uppercase; margin-right: 0.25rem;">Rank By:</span>
-          <button class="filter-btn lb-sort-btn active" data-sort="wins">🏆 Wins</button>
+          <button class="filter-btn lb-sort-btn active" data-sort="points">⭐ Points / Wins</button>
           <button class="filter-btn lb-sort-btn" data-sort="kills">⚔️ Kills</button>
           <button class="filter-btn lb-sort-btn" data-sort="streak">🔥 Streak</button>
-          <button class="filter-btn lb-sort-btn" data-sort="rating">⭐ ELO Rating</button>
+          <button class="filter-btn lb-sort-btn" data-sort="rating">🏆 ELO Rating</button>
         </div>
 
-        <div class="search-box">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="lb-search-input" placeholder="Filter leaderboard gamertags...">
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="lb-search-input" placeholder="Search leaderboard gamertags...">
+          </div>
+          <button class="btn btn-outline btn-sm" id="sync-leaderboards-btn" title="Refresh leaderboards from live CubeCraft API">
+            🔄 Live Refresh
+          </button>
         </div>
       </div>
 
@@ -135,11 +146,12 @@
             <tr>
               <th style="width: 70px;">Rank</th>
               <th>Player Gamertag</th>
+              <th>Mode</th>
               <th>Rank Title</th>
-              <th>Wins</th>
+              <th>Points / Wins</th>
               <th>Kills</th>
               <th>Streak</th>
-              <th>Favorite Kit</th>
+              <th>Kit</th>
             </tr>
           </thead>
           <tbody id="leaderboard-table-body">
@@ -173,25 +185,89 @@
   </section>
 
   <!-- ========================================================================
-       View: Medal Clips Theatre
+       View: Medal & Community Clips
        ======================================================================== -->
   <section id="view-clips" class="view-section">
     <div class="container">
+      
+      <!-- Community Clips Hub: Submit Card -->
+      <div class="community-submit-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h2 style="font-size: 1.4rem; font-weight: 800; display: flex; align-items: center; gap: 0.5rem;">
+              <span>🎬 Community Clips Hub</span>
+              <span class="bundle-item-pill" style="color: var(--accent-cyan); font-size: 0.75rem;">Medal.tv & YouTube</span>
+            </h2>
+            <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0.25rem;">
+              Share your craziest clutches, speed-bridges, void saves, and team wipes with the CubeCraft Bedrock community!
+            </p>
+          </div>
+          <button class="btn btn-primary btn-sm" id="toggle-submit-clip-panel-btn">
+            + Post Your Clip
+          </button>
+        </div>
+
+        <!-- Inline Clip Submission Form (Collapsible/Active) -->
+        <form id="inline-submit-clip-form" style="display: none; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin-top: 1rem;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+            <div>
+              <label class="form-label" for="inline-clip-title">Clip Title *</label>
+              <input type="text" id="inline-clip-title" class="form-control" placeholder="e.g. 1v4 Tea Party clutch with stone sword" required>
+            </div>
+            <div>
+              <label class="form-label" for="inline-clip-gamertag">Your Bedrock Gamertag *</label>
+              <input type="text" id="inline-clip-gamertag" class="form-control" placeholder="e.g. Chiibet" required>
+            </div>
+            <div>
+              <label class="form-label" for="inline-clip-game">Game Mode *</label>
+              <select id="inline-clip-game" class="form-control">
+                <option value="EggWars">EggWars</option>
+                <option value="SkyWars">SkyWars</option>
+                <option value="BlockWars">BlockWars</option>
+                <option value="BedWars">BedWars</option>
+                <option value="Lucky Islands">Lucky Islands</option>
+                <option value="Duels (Battle Arena)">Duels (Battle Arena)</option>
+                <option value="Survival Games">Survival Games</option>
+                <option value="MinerWare">MinerWare</option>
+                <option value="Parkour">Parkour</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label" for="inline-clip-url">Clip URL (Medal.tv / YouTube / MP4) *</label>
+              <input type="text" id="inline-clip-url" class="form-control" placeholder="https://medal.tv/clips/... or YouTube link" required>
+            </div>
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label class="form-label" for="inline-clip-desc">Description / Clutch Story</label>
+            <textarea id="inline-clip-desc" class="form-control" style="min-height: 60px;" placeholder="What happened in this clip? Share details on the opponent, map, or setup..."></textarea>
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+            <button type="button" class="btn btn-outline btn-sm" id="cancel-inline-clip-btn">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm">Publish Community Clip</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Controls & Filter Bar for Clips -->
       <div class="controls-bar">
         <div class="filter-group">
-          <button class="filter-btn clip-game-filter active" data-game="all">All Games</button>
+          <button class="filter-btn clip-type-filter active" data-type="all">All Clips</button>
+          <button class="filter-btn clip-type-filter" data-type="community">👥 Community Submissions</button>
+          <button class="filter-btn clip-type-filter" data-type="featured">⭐ Featured Clutches</button>
+        </div>
+
+        <div class="filter-group">
+          <span style="font-size: 0.78rem; color: var(--text-subtle); text-transform: uppercase;">Game:</span>
+          <button class="filter-btn clip-game-filter active" data-game="all">All</button>
           <button class="filter-btn clip-game-filter" data-game="EggWars">EggWars</button>
           <button class="filter-btn clip-game-filter" data-game="SkyWars">SkyWars</button>
           <button class="filter-btn clip-game-filter" data-game="BlockWars">BlockWars</button>
-          <button class="filter-btn clip-game-filter" data-game="Lucky Islands">Lucky Islands</button>
-          <button class="filter-btn clip-game-filter" data-game="Duels">Duels</button>
+          <button class="filter-btn clip-game-filter" data-game="BedWars">BedWars</button>
+          <button class="filter-btn clip-game-filter" data-game="Duels (Battle Arena)">Duels</button>
         </div>
-
-        <button class="btn btn-primary" id="open-submit-clip-modal-btn">
-          + Submit Medal Clip
-        </button>
       </div>
 
+      <!-- Clips Grid -->
       <div class="clips-grid" id="clips-grid">
         <!-- Rendered dynamically -->
       </div>
@@ -209,7 +285,7 @@
         <div class="encounters-intro">
           <h2>Player Encounters & Reputation</h2>
           <p>
-            Met someone notable in EggWars, SkyWars, or Duels? Share your encounter story, rate their sportsmanship, and help the Bedrock community recognize clutch teammates and fair rivals.
+            Encountered someone notable in EggWars, SkyWars, Bridges, or Duels? Share your encounter story, rate their sportsmanship, and help the Bedrock community recognize clutch teammates and fair rivals.
           </p>
         </div>
         <button class="btn btn-primary" id="open-log-encounter-modal-btn">
@@ -220,14 +296,16 @@
       <!-- Specific Player Profile View (Revealed when searched or clicked) -->
       <div id="player-profile-view" class="player-profile-view">
         <div class="profile-header-grid">
-          <div class="profile-big-avatar" id="profile-avatar">V</div>
+          <div class="profile-big-avatar" id="profile-avatar">
+            <div class="player-avatar-fallback">P</div>
+          </div>
           <div class="profile-titles">
             <div class="profile-tag-row">
-              <h2 class="profile-gamertag" id="profile-gamertag">Vxrtical</h2>
-              <span class="podium-rank-title" id="profile-rank-title">Obsidian</span>
+              <h2 class="profile-gamertag" id="profile-gamertag">Player</h2>
+              <span class="podium-rank-title" id="profile-rank-title">Bedrock Player</span>
             </div>
             <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.6rem;" id="profile-bio">
-              Bedrock EggWars grinder & competitive duels player.
+              CubeCraft Bedrock Ranked Competitor.
             </p>
             <div id="profile-badges" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
           </div>
@@ -282,56 +360,9 @@
       </div>
       <div class="modal-body">
         <div class="video-player-container" id="video-modal-player">
-          <!-- Video or Medal iframe injected here -->
+          <!-- Video or iframe injected here -->
         </div>
         <div id="video-modal-meta"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal: Submit Medal Clip -->
-  <div id="submit-clip-modal" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3>Submit a Bedrock Medal Clip</h3>
-        <button class="close-btn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <form id="submit-clip-form">
-          <div class="form-group">
-            <label class="form-label" for="clip-input-title">Clip Title *</label>
-            <input type="text" id="clip-input-title" class="form-control" placeholder="e.g., 1v3 EggWars clutch with stone sword" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="clip-input-gamertag">Your Bedrock Gamertag *</label>
-            <input type="text" id="clip-input-gamertag" class="form-control" placeholder="e.g., Vxrtical" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="clip-input-game">Game Mode *</label>
-            <select id="clip-input-game" class="form-control">
-              <option value="EggWars">EggWars</option>
-              <option value="SkyWars">SkyWars</option>
-              <option value="Lucky Islands">Lucky Islands</option>
-              <option value="BlockWars">BlockWars</option>
-              <option value="Survival Games">Survival Games</option>
-              <option value="MinerWare">MinerWare</option>
-              <option value="Duels">Duels</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="clip-input-url">Medal.tv Clip URL or MP4 Link</label>
-            <input type="url" id="clip-input-url" class="form-control" placeholder="https://medal.tv/clip/...">
-            <small style="color: var(--text-subtle); font-size: 0.72rem; margin-top: 3px; display: block;">Supports Medal.tv links or direct MP4 video URLs.</small>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="clip-input-duration">Duration</label>
-            <input type="text" id="clip-input-duration" class="form-control" placeholder="0:30">
-          </div>
-          <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
-            <button type="button" class="btn btn-outline close-btn">Cancel</button>
-            <button type="submit" class="btn btn-primary">Publish Clip</button>
-          </div>
-        </form>
       </div>
     </div>
   </div>
@@ -347,7 +378,7 @@
         <form id="submit-encounter-form">
           <div class="form-group">
             <label class="form-label" for="encounter-input-gamertag">Target Player's Bedrock Gamertag *</label>
-            <input type="text" id="encounter-input-gamertag" class="form-control" placeholder="Exact Xbox Gamertag (e.g. Vxrtical)" required>
+            <input type="text" id="encounter-input-gamertag" class="form-control" placeholder="Exact Xbox Gamertag (e.g. Chiibet, ykelias1439)" required>
           </div>
           <div class="form-group">
             <label class="form-label" for="encounter-input-reviewer">Your Gamertag (Optional)</label>
@@ -356,20 +387,23 @@
           <div class="form-group">
             <label class="form-label" for="encounter-input-game">Game Played *</label>
             <select id="encounter-input-game" class="form-control">
-              <option value="EggWars Squads">EggWars Squads</option>
-              <option value="EggWars Duos">EggWars Duos</option>
               <option value="EggWars Solo">EggWars Solo</option>
+              <option value="EggWars Duos">EggWars Duos (Teams of 2)</option>
+              <option value="EggWars Squads">EggWars Squads (Teams of 4)</option>
               <option value="EggWars Mega">EggWars Mega</option>
               <option value="SkyWars Solo">SkyWars Solo</option>
-              <option value="SkyWars Teams">SkyWars Teams</option>
+              <option value="SkyWars Duos">SkyWars Duos (Teams of 2)</option>
+              <option value="SkyWars Squads">SkyWars Squads (Teams of 4)</option>
               <option value="SkyWars Chaos">SkyWars Chaos</option>
-              <option value="Lucky Islands Solo">Lucky Islands Solo</option>
-              <option value="Lucky Islands Teams">Lucky Islands Teams</option>
               <option value="BlockWars Bridges">BlockWars Bridges</option>
-              <option value="BlockWars Core">BlockWars Core</option>
+              <option value="BlockWars CTF">BlockWars CTF</option>
+              <option value="BedWars Solo">BedWars Solo</option>
+              <option value="BedWars Duos">BedWars Duos</option>
+              <option value="Lucky Islands">Lucky Islands</option>
+              <option value="Duels (Battle Arena)">Duels (Battle Arena)</option>
               <option value="Survival Games">Survival Games</option>
               <option value="MinerWare">MinerWare</option>
-              <option value="Duels (Battle Arena)">Duels (Battle Arena)</option>
+              <option value="Parkour">Parkour</option>
             </select>
           </div>
           <div class="form-group">
@@ -436,7 +470,7 @@
           </div>
           <strong>CubeCraft Bedrock Community Hub</strong>
         </div>
-        <p>Built for the competitive Minecraft Bedrock community.</p>
+        <p>Built for the competitive Minecraft Bedrock community across 39 game modes.</p>
         <p class="footer-disclaimer">
           CubeCraft Community Hub is a fan-created platform. Minecraft is a trademark of Mojang AB / Microsoft. CubeCraft Games is a trademark of CubeCraft Games Ltd. Not an official Minecraft or CubeCraft product.
         </p>

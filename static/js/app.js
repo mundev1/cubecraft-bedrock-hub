@@ -1,19 +1,21 @@
 /**
  * CubeCraft Bedrock Community Hub - Client Application
- * Modular ES6 architecture handling Leaderboards, Bundles Showcase,
- * Playable Medal Clips Theatre, and Player Encounter Reviews.
+ * Modular ES6 architecture handling 39 Game Mode Leaderboards, 800+ Players,
+ * Bundles Showcase, Playable Medal & Community Clips Theatre, and Encounters.
  */
 
 // Application State
 const state = {
   currentView: 'leaderboards',
+  gamesList: [],
   selectedGame: 'EggWars',
   selectedMode: 'All Modes',
-  leaderboardSort: 'wins',
+  leaderboardSort: 'points',
   leaderboardSearch: '',
   bundles: [],
   clips: [],
   clipsFilterGame: 'all',
+  clipsFilterType: 'all',
   clipsSort: 'recent',
   activePlayer: null,
   recentEncounters: [],
@@ -56,6 +58,12 @@ function sanitizeHTML(str) {
   );
 }
 
+function extractYouTubeId(url) {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+  return match ? match[1] : null;
+}
+
 // ==========================================================================
 // Initialization & Navigation
 // ==========================================================================
@@ -65,13 +73,34 @@ document.addEventListener('DOMContentLoaded', () => {
   initServerPill();
   loadGlobalStats();
   loadGamesList();
-  loadLeaderboards();
   loadBundles();
   loadClips();
   loadRecentEncounters();
   initModalListeners();
   initSearchAutocomplete();
+  initCommunityClipSubmissions();
   startBundleCountdownTimer();
+
+  // Live leaderboards sync button
+  const syncBtn = document.getElementById('sync-leaderboards-btn');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', async () => {
+      syncBtn.innerText = '⏳ Syncing...';
+      syncBtn.disabled = true;
+      try {
+        const res = await fetch('/api/sync-leaderboards', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message || 'Synced live Bedrock leaderboards!');
+        loadGlobalStats();
+        loadLeaderboards();
+      } catch (err) {
+        showToast('Sync error. Try again shortly.');
+      } finally {
+        syncBtn.innerText = '🔄 Live Refresh';
+        syncBtn.disabled = false;
+      }
+    });
+  }
 
   // Handle URL hash changes
   window.addEventListener('hashchange', handleHashRouting);
@@ -140,9 +169,9 @@ async function loadGlobalStats() {
     if (data.success) {
       const s = data.stats;
       document.getElementById('stat-players-count').innerText = formatNumber(s.total_players);
+      document.getElementById('stat-leaderboard-entries').innerText = formatNumber(s.total_leaderboard_entries);
       document.getElementById('stat-encounters-count').innerText = formatNumber(s.total_encounters);
       document.getElementById('stat-clips-count').innerText = formatNumber(s.total_clips);
-      document.getElementById('stat-bundles-count').innerText = s.active_bundles;
     }
   } catch (err) {
     console.error('Failed to load stats:', err);
@@ -150,7 +179,7 @@ async function loadGlobalStats() {
 }
 
 // ==========================================================================
-// Leaderboards View
+// Leaderboards View & 39 Sub-Modes
 // ==========================================================================
 
 async function loadGamesList() {
@@ -159,10 +188,11 @@ async function loadGamesList() {
     const data = await res.json();
     if (!data.success) return;
 
+    state.gamesList = data.games;
     const container = document.getElementById('game-selector-grid');
     if (!container) return;
 
-    container.innerHTML = data.games.map(game => `
+    container.innerHTML = state.gamesList.map(game => `
       <div class="game-card-btn ${game.name === state.selectedGame ? 'active' : ''}" data-game="${game.name}">
         <span class="game-card-icon">${game.icon}</span>
         <span class="game-card-name">${game.name}</span>
@@ -175,12 +205,39 @@ async function loadGamesList() {
         btn.classList.add('active');
         state.selectedGame = btn.getAttribute('data-game');
         state.selectedMode = 'All Modes';
+        renderSubmodesPills(state.selectedGame);
         loadLeaderboards();
       });
     });
+
+    renderSubmodesPills(state.selectedGame);
+    loadLeaderboards();
   } catch (err) {
     console.error('Failed to load games:', err);
   }
+}
+
+function renderSubmodesPills(gameName) {
+  const container = document.getElementById('submodes-pills-list');
+  if (!container) return;
+
+  const game = state.gamesList.find(g => g.name === gameName);
+  const modes = game ? game.modes : ['All Modes'];
+
+  container.innerHTML = modes.map(m => `
+    <button class="submode-pill ${m === state.selectedMode ? 'active' : ''}" data-mode="${m}">
+      ${m}
+    </button>
+  `).join('');
+
+  container.querySelectorAll('.submode-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      container.querySelectorAll('.submode-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      state.selectedMode = pill.getAttribute('data-mode');
+      loadLeaderboards();
+    });
+  });
 }
 
 async function loadLeaderboards() {
@@ -188,7 +245,7 @@ async function loadLeaderboards() {
   const podiumContainer = document.getElementById('podium-container');
   if (!tableBody || !podiumContainer) return;
 
-  tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-subtle);">Fetching Bedrock leaderboards...</td></tr>`;
+  tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-subtle);">Fetching Bedrock leaderboards...</td></tr>`;
 
   try {
     const url = `/api/leaderboards?game=${encodeURIComponent(state.selectedGame)}&mode=${encodeURIComponent(state.selectedMode)}&sort_by=${state.leaderboardSort}&search=${encodeURIComponent(state.leaderboardSearch)}`;
@@ -197,7 +254,7 @@ async function loadLeaderboards() {
 
     if (!data.success || data.leaderboard.length === 0) {
       podiumContainer.innerHTML = '';
-      tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-subtle);">No players found matching current filters.</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-subtle);">No players found for ${sanitizeHTML(state.selectedGame)} (${sanitizeHTML(state.selectedMode)}).</td></tr>`;
       return;
     }
 
@@ -205,7 +262,7 @@ async function loadLeaderboards() {
     renderLeaderboardTable(data.leaderboard);
   } catch (err) {
     console.error('Failed to load leaderboards:', err);
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #f43f5e;">Error loading leaderboards.</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #f43f5e;">Error loading leaderboards.</td></tr>`;
   }
 }
 
@@ -221,22 +278,34 @@ function renderPodium(podium) {
   container.innerHTML = podium.map((p, index) => {
     const rank = index + 1;
     const initial = p.player_gamertag.charAt(0).toUpperCase();
+    const avatarHtml = p.player_avatar_icon ? `
+      <div class="player-avatar-box">
+        <img src="${p.player_avatar_icon}" alt="${sanitizeHTML(p.player_gamertag)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+        <div class="player-avatar-fallback" style="display: none; background: ${p.avatar_color || '#00e5ff'};">${initial}</div>
+      </div>
+    ` : `
+      <div class="player-avatar-box">
+        <div class="player-avatar-fallback" style="background: ${p.avatar_color || '#00e5ff'};">${initial}</div>
+      </div>
+    `;
+
     return `
       <div class="podium-card rank-${rank}">
         <div class="podium-rank-badge">#${rank}</div>
-        <div class="player-avatar-box" style="background: ${p.avatar_color || '#00e5ff'};">
-          ${initial}
-        </div>
+        ${avatarHtml}
         <a href="#player/${encodeURIComponent(p.player_gamertag)}" class="podium-name">
           ${sanitizeHTML(p.player_gamertag)}
         </a>
         <div>
-          <span class="podium-rank-title">${p.rank_title || 'Player'}</span>
+          <span class="podium-rank-title" style="color: ${p.avatar_color || '#fff'};">${sanitizeHTML(p.rank_title || 'Bedrock Player')}</span>
+        </div>
+        <div style="font-size: 0.74rem; color: var(--text-subtle); margin-bottom: 0.5rem;">
+          ${sanitizeHTML(p.mode)}
         </div>
         <div class="podium-stats">
           <div class="stat-item">
-            <span class="stat-val">${formatNumber(p.wins)}</span>
-            <span class="stat-lbl">Wins</span>
+            <span class="stat-val">${formatNumber(p.points || p.wins)}</span>
+            <span class="stat-lbl">Points</span>
           </div>
           <div class="stat-item">
             <span class="stat-val">${formatNumber(p.kills)}</span>
@@ -258,29 +327,39 @@ function renderLeaderboardTable(rows) {
 
   tableBody.innerHTML = rows.map((r) => {
     const initial = r.player_gamertag.charAt(0).toUpperCase();
+    const avatarHtml = r.player_avatar_icon ? `
+      <div class="player-mini-avatar">
+        <img src="${r.player_avatar_icon}" alt="${sanitizeHTML(r.player_gamertag)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+        <div class="player-avatar-fallback" style="display: none; background: ${r.avatar_color || '#00e5ff'}; font-size: 0.9rem;">${initial}</div>
+      </div>
+    ` : `
+      <div class="player-mini-avatar">
+        <div class="player-avatar-fallback" style="background: ${r.avatar_color || '#00e5ff'}; font-size: 0.9rem;">${initial}</div>
+      </div>
+    `;
+
     return `
       <tr>
         <td class="td-rank">#${r.dynamic_rank}</td>
         <td>
           <div class="td-player">
-            <div class="player-mini-avatar" style="background: ${r.avatar_color || '#00e5ff'};">
-              ${initial}
-            </div>
+            ${avatarHtml}
             <div class="player-info-meta">
               <a href="#player/${encodeURIComponent(r.player_gamertag)}" class="player-link">
                 ${sanitizeHTML(r.player_gamertag)}
               </a>
               <div>
-                <span class="rep-pill positive">⭐ ${r.reputation_score || 100}% Rep (${r.encounter_count || 0})</span>
+                <span class="rep-pill positive">⭐ ${r.reputation_score || 100}% Rep (${r.encounter_count || 0} reviews)</span>
               </div>
             </div>
           </div>
         </td>
-        <td><span class="podium-rank-title">${r.rank_title || 'Player'}</span></td>
-        <td style="font-weight: 700; color: #fff;">${formatNumber(r.wins)}</td>
+        <td style="color: var(--text-muted); font-size: 0.82rem;">${sanitizeHTML(r.mode)}</td>
+        <td><span class="podium-rank-title" style="color: ${r.avatar_color || '#fff'};">${sanitizeHTML(r.rank_title || 'Player')}</span></td>
+        <td style="font-weight: 700; color: #fff;">${formatNumber(r.points || r.wins)}</td>
         <td>${formatNumber(r.kills)}</td>
-        <td>${r.streak ? `${r.streak} W` : '-'}</td>
-        <td style="color: var(--accent-cyan); font-weight: 600;">${r.favorite_kit || 'Standard'}</td>
+        <td>${r.streak ? `${r.streak} 🔥` : '-'}</td>
+        <td style="color: var(--accent-cyan); font-weight: 600; font-size: 0.82rem;">${sanitizeHTML(r.favorite_kit || 'Standard')}</td>
       </tr>
     `;
   }).join('');
@@ -328,7 +407,6 @@ function renderBundles() {
   const container = document.getElementById('bundles-grid');
   if (!container) return;
 
-  // Modern abstract fallback backgrounds for bundles
   const bgGradients = {
     'Mythic': 'linear-gradient(135deg, #2e1065 0%, #0b0f19 100%)',
     'Legendary': 'linear-gradient(135deg, #451a03 0%, #0b0f19 100%)',
@@ -376,8 +454,7 @@ function renderBundles() {
 
   container.querySelectorAll('.inspect-bundle-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const bundleId = btn.getAttribute('data-id');
-      inspectBundle(bundleId);
+      inspectBundle(btn.getAttribute('data-id'));
     });
   });
 
@@ -452,7 +529,7 @@ function inspectBundle(bundleId) {
 }
 
 // ==========================================================================
-// Medal Clips Theatre View
+// Playable Medal & Community Clips View
 // ==========================================================================
 
 async function loadClips() {
@@ -460,7 +537,7 @@ async function loadClips() {
   if (!container) return;
 
   try {
-    const url = `/api/clips?game=${encodeURIComponent(state.clipsFilterGame)}&sort=${state.clipsSort}`;
+    const url = `/api/clips?game=${encodeURIComponent(state.clipsFilterGame)}&type=${encodeURIComponent(state.clipsFilterType)}&sort=${state.clipsSort}`;
     const res = await fetch(url);
     const data = await res.json();
     if (!data.success) return;
@@ -477,7 +554,7 @@ function renderClips() {
   if (!container) return;
 
   if (state.clips.length === 0) {
-    container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: var(--text-subtle);">No Bedrock clips found. Be the first to submit a clip!</div>`;
+    container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: var(--text-subtle);">No Bedrock clips found for this filter. Use the form above to submit the first clip!</div>`;
     return;
   }
 
@@ -485,6 +562,7 @@ function renderClips() {
     <div class="clip-card" data-id="${clip.id}">
       <div class="clip-thumb-box" style="background-image: url('${clip.thumbnail_url}');" data-id="${clip.id}">
         <span class="clip-game-badge">${sanitizeHTML(clip.game)}</span>
+        ${clip.is_community ? '<span class="clip-community-badge">Community</span>' : ''}
         <div class="play-overlay-btn">▶</div>
         <span class="clip-duration-badge">${clip.duration || '0:30'}</span>
       </div>
@@ -506,7 +584,6 @@ function renderClips() {
     </div>
   `).join('');
 
-  // Attach card click handlers for video player
   container.querySelectorAll('.clip-thumb-box').forEach(el => {
     el.addEventListener('click', () => {
       const clipId = parseInt(el.getAttribute('data-id'), 10);
@@ -514,7 +591,6 @@ function renderClips() {
     });
   });
 
-  // Attach upvote handlers
   container.querySelectorAll('.upvote-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -538,35 +614,47 @@ function playClip(clipId) {
 
   title.innerText = clip.title;
 
-  // If Medal embed URL is present, or direct video URL fallback
-  if (clip.medal_url && clip.medal_url.includes('medal.tv/clip/')) {
-    // Medal embed format
-    const embedUrl = clip.medal_url.replace('/games/', '/clip/').replace('medal.tv/games/', 'medal.tv/clip/');
+  const ytId = extractYouTubeId(clip.video_url || clip.medal_url);
+
+  if (ytId) {
+    // Responsive YouTube embed (100% reliable in all browsers)
     playerContainer.innerHTML = `
-      <iframe src="${embedUrl}?autoplay=1&muted=0&loop=1" allow="autoplay" allowfullscreen></iframe>
+      <iframe src="https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&rel=0" allow="autoplay; encrypted-media; fullscreen" allowfullscreen style="width:100%; height:100%; border:none;"></iframe>
     `;
   } else {
-    // Custom HTML5 video player with theater mode controls
-    const vidUrl = clip.video_url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+    // Bulletproof HTML5 video player with verified video stream & controls
+    const vidSrc = clip.video_url || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
     playerContainer.innerHTML = `
-      <video id="active-html5-video" controls autoplay playsinline style="width: 100%; height: 100%; border-radius: 8px;">
-        <source src="${vidUrl}" type="video/mp4">
+      <video id="active-html5-video" controls autoplay playsinline preload="metadata" style="width: 100%; height: 100%; object-fit: contain;">
+        <source src="${vidSrc}" type="video/mp4">
         Your browser does not support Bedrock video clips.
       </video>
     `;
   }
 
+  // Metadata & Action bar
+  const medalLinkBtn = clip.medal_url && clip.medal_url.includes('medal.tv') ? `
+    <a href="${clip.medal_url}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="border-color: #ff3366; color: #ff6699;">
+      Open on Medal.tv ↗
+    </a>
+  ` : '';
+
   meta.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-top: 1rem;">
-      <div style="display: flex; align-items: center; gap: 0.75rem;">
-        <span class="bundle-item-pill" style="color: var(--accent-cyan);">${sanitizeHTML(clip.game)}</span>
-        <span style="font-size: 0.85rem; color: var(--text-muted);">Recorded by <a href="#player/${encodeURIComponent(clip.gamertag)}" style="color: var(--text-main); font-weight: 700;">${sanitizeHTML(clip.gamertag)}</a></span>
+      <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+        <span class="bundle-item-pill" style="color: var(--accent-cyan); font-weight: 700;">${sanitizeHTML(clip.game)}</span>
+        <span style="font-size: 0.88rem; color: var(--text-muted);">
+          Recorded by <a href="#player/${encodeURIComponent(clip.gamertag)}" style="color: #fff; font-weight: 700;">${sanitizeHTML(clip.gamertag)}</a>
+        </span>
+        ${clip.is_community ? '<span class="clip-community-badge" style="position:static;">Community Verified</span>' : ''}
       </div>
-      <div style="display: flex; align-items: center; gap: 0.75rem;">
-        <button class="btn btn-outline btn-sm" id="toggle-theater-btn">Toggle Theater Mode</button>
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        ${medalLinkBtn}
+        <button class="btn btn-outline btn-sm" id="toggle-theater-btn">Theater Mode</button>
         <button class="btn btn-primary btn-sm" onclick="copyToClipboard('${clip.medal_url || window.location.href}', 'Clip link copied!')">Share Clip</button>
       </div>
     </div>
+    ${clip.description ? `<p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.75rem; line-height: 1.5;">${sanitizeHTML(clip.description)}</p>` : ''}
   `;
 
   const theaterBtn = document.getElementById('toggle-theater-btn');
@@ -596,47 +684,80 @@ async function upvoteClip(clipId, btn) {
   }
 }
 
-// Clip Filter Listeners
-document.querySelectorAll('.clip-game-filter').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.clip-game-filter').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    state.clipsFilterGame = btn.getAttribute('data-game');
-    loadClips();
-  });
-});
+// Community Clip Submission Initializer
+function initCommunityClipSubmissions() {
+  const toggleBtn = document.getElementById('toggle-submit-clip-panel-btn');
+  const form = document.getElementById('inline-submit-clip-form');
+  const cancelBtn = document.getElementById('cancel-inline-clip-btn');
 
-// Submit Clip Form
-const submitClipForm = document.getElementById('submit-clip-form');
-if (submitClipForm) {
-  submitClipForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const payload = {
-      title: document.getElementById('clip-input-title').value.trim(),
-      gamertag: document.getElementById('clip-input-gamertag').value.trim(),
-      game: document.getElementById('clip-input-game').value,
-      medal_url: document.getElementById('clip-input-url').value.trim(),
-      duration: document.getElementById('clip-input-duration').value.trim() || '0:30'
-    };
+  if (toggleBtn && form) {
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = form.style.display === 'none';
+      form.style.display = isHidden ? 'block' : 'none';
+      toggleBtn.innerText = isHidden ? 'Close Form' : '+ Post Your Clip';
+      if (isHidden) form.scrollIntoView({ behavior: 'smooth' });
+    });
+  }
 
-    try {
-      const res = await fetch('/api/clips', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Medal clip submitted successfully!');
-        closeAllModals();
-        submitClipForm.reset();
-        loadClips();
-      } else {
-        alert(data.error || 'Failed to submit clip');
+  if (cancelBtn && form && toggleBtn) {
+    cancelBtn.addEventListener('click', () => {
+      form.style.display = 'none';
+      toggleBtn.innerText = '+ Post Your Clip';
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        title: document.getElementById('inline-clip-title').value.trim(),
+        gamertag: document.getElementById('inline-clip-gamertag').value.trim(),
+        game: document.getElementById('inline-clip-game').value,
+        clip_url: document.getElementById('inline-clip-url').value.trim(),
+        description: document.getElementById('inline-clip-desc').value.trim(),
+        duration: '0:35'
+      };
+
+      try {
+        const res = await fetch('/api/clips', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message);
+          form.reset();
+          form.style.display = 'none';
+          if (toggleBtn) toggleBtn.innerText = '+ Post Your Clip';
+          loadClips();
+          loadGlobalStats();
+        } else {
+          alert(data.error || 'Failed to submit clip');
+        }
+      } catch (err) {
+        console.error('Submission error:', err);
       }
-    } catch (err) {
-      console.error('Failed to submit clip:', err);
-    }
+    });
+  }
+
+  // Clip Filter Listeners
+  document.querySelectorAll('.clip-type-filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.clip-type-filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.clipsFilterType = btn.getAttribute('data-type');
+      loadClips();
+    });
+  });
+
+  document.querySelectorAll('.clip-game-filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.clip-game-filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.clipsFilterGame = btn.getAttribute('data-game');
+      loadClips();
+    });
   });
 }
 
@@ -740,10 +861,21 @@ function renderPlayerProfile() {
 
   document.getElementById('profile-gamertag').innerText = p.gamertag;
   document.getElementById('profile-rank-title').innerText = p.rank_title || 'Bedrock Player';
-  document.getElementById('profile-bio').innerText = p.bio || 'Minecraft Bedrock CubeCraft Player.';
+  document.getElementById('profile-bio').innerText = p.bio || 'CubeCraft Bedrock Ranked Player.';
   document.getElementById('profile-score-num').innerText = `${p.reputation_score}%`;
-  document.getElementById('profile-avatar').innerText = p.gamertag.charAt(0).toUpperCase();
-  document.getElementById('profile-avatar').style.backgroundColor = p.avatar_color || '#00e5ff';
+
+  const avatarBox = document.getElementById('profile-avatar');
+  const initial = p.gamertag.charAt(0).toUpperCase();
+  if (p.avatar_icon) {
+    avatarBox.innerHTML = `
+      <img src="${p.avatar_icon}" alt="${sanitizeHTML(p.gamertag)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      <div class="player-avatar-fallback" style="display:none; background:${p.avatar_color || '#00e5ff'};">${initial}</div>
+    `;
+  } else {
+    avatarBox.innerHTML = `
+      <div class="player-avatar-fallback" style="background:${p.avatar_color || '#00e5ff'};">${initial}</div>
+    `;
+  }
 
   // Badges
   const badgesContainer = document.getElementById('profile-badges');
@@ -765,7 +897,7 @@ function renderPlayerProfile() {
   const listContainer = document.getElementById('player-specific-encounters-list');
   if (listContainer) {
     if (encounters.length === 0) {
-      listContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-subtle);">No encounters logged yet for ${sanitizeHTML(p.gamertag)}. Be the first!</div>`;
+      listContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-subtle);">No encounters logged yet for ${sanitizeHTML(p.gamertag)}. Be the first to share an encounter!</div>`;
     } else {
       listContainer.innerHTML = encounters.map(enc => `
         <div class="encounter-card" style="margin-bottom: 1rem;">
@@ -802,7 +934,7 @@ async function upvoteEncounter(id) {
 }
 
 async function reportEncounter(id) {
-  if (!confirm('Report this comment for violating community guidelines?')) return;
+  if (!confirm('Report this comment for community moderation?')) return;
   try {
     const res = await fetch(`/api/encounters/${id}/report`, { method: 'POST' });
     const data = await res.json();
@@ -856,7 +988,6 @@ if (submitEncounterForm) {
         submitEncounterForm.reset();
         loadRecentEncounters();
         loadGlobalStats();
-        // Load the profile if user is viewing encounters
         loadPlayerProfile(gamertag);
       } else {
         alert(data.error || 'Failed to submit encounter review');
@@ -867,7 +998,6 @@ if (submitEncounterForm) {
   });
 }
 
-// Encounter Tag Filter Buttons
 document.querySelectorAll('.enc-tag-filter').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.enc-tag-filter').forEach(b => b.classList.remove('active'));
@@ -877,7 +1007,7 @@ document.querySelectorAll('.enc-tag-filter').forEach(btn => {
   });
 });
 
-// Search Autocomplete for Gamertags
+// Search Autocomplete for 800+ Gamertags
 function initSearchAutocomplete() {
   const searchInput = document.getElementById('global-gamertag-search');
   const resultsDropdown = document.getElementById('search-autocomplete-dropdown');
@@ -897,15 +1027,24 @@ function initSearchAutocomplete() {
         const res = await fetch(`/api/players/search?q=${encodeURIComponent(query)}`);
         const data = await res.json();
         if (data.success && data.players.length > 0) {
-          resultsDropdown.innerHTML = data.players.map(p => `
-            <div class="search-result-item" style="padding: 0.6rem 0.85rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle);" data-gamertag="${p.gamertag}">
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <span class="player-mini-avatar" style="background: ${p.avatar_color || '#00e5ff'}; width: 24px; height: 24px; font-size: 0.7rem;">${p.gamertag.charAt(0)}</span>
-                <span style="font-weight: 600; color: #fff;">${sanitizeHTML(p.gamertag)}</span>
+          resultsDropdown.innerHTML = data.players.map(p => {
+            const avatarHtml = p.avatar_icon ? `
+              <img src="${p.avatar_icon}" style="width: 24px; height: 24px; object-fit: contain;" alt="${sanitizeHTML(p.gamertag)}" />
+            ` : `
+              <span class="player-mini-avatar" style="background: ${p.avatar_color || '#00e5ff'}; width: 24px; height: 24px; font-size: 0.7rem;">${p.gamertag.charAt(0)}</span>
+            `;
+
+            return `
+              <div class="search-result-item" style="padding: 0.6rem 0.85rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle);" data-gamertag="${p.gamertag}">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  ${avatarHtml}
+                  <span style="font-weight: 600; color: #fff;">${sanitizeHTML(p.gamertag)}</span>
+                  <span style="font-size: 0.7rem; color: var(--text-subtle);">(${sanitizeHTML(p.rank_title || 'Player')})</span>
+                </div>
+                <span class="rep-pill positive" style="font-size: 0.65rem;">⭐ ${p.reputation_score}% Rep</span>
               </div>
-              <span class="rep-pill positive" style="font-size: 0.65rem;">⭐ ${p.reputation_score}% Rep</span>
-            </div>
-          `).join('');
+            `;
+          }).join('');
 
           resultsDropdown.style.display = 'block';
 
@@ -920,7 +1059,7 @@ function initSearchAutocomplete() {
         } else {
           resultsDropdown.innerHTML = `
             <div style="padding: 0.75rem; font-size: 0.82rem; color: var(--text-muted); text-align: center;">
-              No records for "${sanitizeHTML(query)}".
+              No local record for "${sanitizeHTML(query)}".
               <button class="btn btn-outline btn-sm" style="margin-top: 0.5rem; width: 100%;" onclick="openEncounterModal('${sanitizeHTML(query)}'); document.getElementById('search-autocomplete-dropdown').style.display='none';">
                 + Log First Encounter
               </button>
@@ -931,7 +1070,7 @@ function initSearchAutocomplete() {
       } catch (err) {
         console.error('Search error:', err);
       }
-    }, 200);
+    }, 180);
   });
 
   document.addEventListener('click', (e) => {
@@ -955,7 +1094,6 @@ function openModal(modal) {
 function closeAllModals() {
   document.querySelectorAll('.modal-overlay').forEach(m => {
     m.classList.remove('active');
-    // Stop any playing video
     const vid = m.querySelector('video');
     if (vid) vid.pause();
     const iframe = m.querySelector('iframe');
@@ -978,14 +1116,6 @@ function initModalListeners() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeAllModals();
   });
-
-  // Modal triggers
-  const submitClipBtn = document.getElementById('open-submit-clip-modal-btn');
-  if (submitClipBtn) {
-    submitClipBtn.addEventListener('click', () => {
-      openModal(document.getElementById('submit-clip-modal'));
-    });
-  }
 
   const logEncounterBtn = document.getElementById('open-log-encounter-modal-btn');
   if (logEncounterBtn) {
