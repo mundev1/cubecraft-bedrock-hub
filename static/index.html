@@ -91,8 +91,8 @@
           <span class="hero-stat-label">Leaderboard Entries</span>
         </div>
         <div class="hero-stat-card highlight-cyan">
-          <span class="hero-stat-num" id="stat-daily-wins">--</span>
-          <span class="hero-stat-label">⚡ Wins Tracked Today</span>
+          <span class="hero-stat-num" id="stat-games-count">39</span>
+          <span class="hero-stat-label">Game Modes Tracked</span>
         </div>
         <div class="hero-stat-card highlight-emerald">
           <span class="hero-stat-num" id="stat-online-players">--</span>
@@ -106,12 +106,6 @@
           <span class="hero-stat-num" id="stat-clips-count">--</span>
           <span class="hero-stat-label">Clips Shared</span>
         </div>
-      </div>
-
-      <!-- Daily Grinder Spotlight Ticker -->
-      <div class="hero-grinder-ticker" id="hero-grinder-ticker" style="display: none;">
-        <span class="ticker-badge">🔥 Daily Grinder Leader</span>
-        <span class="ticker-text" id="hero-grinder-text">Top Daily Grinder: Loading...</span>
       </div>
     </div>
   </section>
@@ -133,40 +127,11 @@
         <div id="submodes-pills-list" style="display: flex; gap: 0.4rem; flex-wrap: wrap;"></div>
       </div>
 
-      <!-- Timeframe Toggle: All-Time vs Today's Daily Wins -->
-      <div class="timeframe-toggle-bar">
-        <div class="timeframe-toggle-group">
-          <button class="timeframe-btn active" data-timeframe="all_time" id="timeframe-alltime-btn">
-            <span>🏆 All-Time Total</span>
-          </button>
-          <button class="timeframe-btn" data-timeframe="daily" id="timeframe-daily-btn">
-            <span class="live-pulse-dot"></span>
-            <span>⚡ Today's Daily Wins</span>
-          </button>
-        </div>
-        <div class="daily-notice-pill">
-          <span>⚡ Real-time snapshot tracking • Delta calculated live from Bedrock sync</span>
-        </div>
-      </div>
-
-      <!-- Daily Grinders Leaderboard Spotlight Strip -->
-      <div class="daily-grinders-strip" id="daily-grinders-strip">
-        <div class="grinders-strip-title">
-          <span>🔥 Today's Top Grinders:</span>
-        </div>
-        <div class="grinders-chip-list" id="daily-grinders-list">
-          <span style="font-size: 0.8rem; color: var(--text-subtle);">Fetching daily grinders...</span>
-        </div>
-      </div>
-
       <!-- Controls & Filter Bar -->
       <div class="controls-bar">
-        <div class="filter-group">
-          <span style="font-size: 0.8rem; color: var(--text-subtle); text-transform: uppercase; margin-right: 0.25rem;">Rank By:</span>
-          <button class="filter-btn lb-sort-btn active" data-sort="points">⭐ Points / Wins</button>
-          <button class="filter-btn lb-sort-btn" data-sort="kills">⚔️ Kills</button>
-          <button class="filter-btn lb-sort-btn" data-sort="streak">🔥 Streak</button>
-          <button class="filter-btn lb-sort-btn" data-sort="rating">🏆 ELO Rating</button>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 0.82rem; color: var(--text-subtle); text-transform: uppercase; font-weight: 700;">Official Rankings:</span>
+          <span class="bundle-item-pill" style="color: var(--accent-cyan); font-size: 0.76rem;">Ranked by Official Points</span>
         </div>
 
         <div style="display: flex; gap: 0.75rem; align-items: center;">
@@ -194,10 +159,8 @@
               <th>Player Gamertag</th>
               <th>Mode</th>
               <th>Rank Title</th>
-              <th id="th-points-label">Points / Wins</th>
-              <th id="th-kills-label">Kills</th>
-              <th id="th-streak-label">Streak</th>
-              <th>Kit</th>
+              <th>Official Points</th>
+              <th>Community Reviews</th>
             </tr>
           </thead>
           <tbody id="leaderboard-table-body">
@@ -410,50 +373,17 @@
           </div>
         </div>
 
-        <!-- Today's Live Grinding Stats Dashboard -->
-        <div class="profile-daily-dashboard" id="profile-daily-dashboard">
-          <div class="daily-dash-header">
-            <div style="display: flex; align-items: center; gap: 0.6rem;">
-              <span style="font-size: 1.25rem;">⚡</span>
-              <strong style="color: #fff; font-size: 1.05rem;">Today's Live Bedrock Grinding Stats</strong>
-              <span class="daily-active-status" id="profile-active-status">🟢 Active Today</span>
-            </div>
-            <span style="font-size: 0.76rem; color: var(--text-subtle);" id="profile-daily-updated">Real-Time Daily Wins Snapshot</span>
-          </div>
-          <div class="daily-dash-metrics">
-            <div class="daily-metric-card">
-              <span class="daily-metric-num" id="profile-daily-wins" style="color: var(--accent-cyan);">+0</span>
-              <span class="daily-metric-label">Wins Today</span>
-            </div>
-            <div class="daily-metric-card">
-              <span class="daily-metric-num" id="profile-daily-kills" style="color: #f43f5e;">+0</span>
-              <span class="daily-metric-label">Kills Today</span>
-            </div>
-            <div class="daily-metric-card">
-              <span class="daily-metric-num" id="profile-daily-streak" style="color: #fbbf24;">0 🔥</span>
-              <span class="daily-metric-label">Daily Streak</span>
-            </div>
-            <div class="daily-metric-card">
-              <span class="daily-metric-num" id="profile-daily-modes" style="color: var(--accent-emerald);">0</span>
-              <span class="daily-metric-label">Ranked Modes</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Player Game Modes & Stats Table -->
+        <!-- Player Official Ranked Modes Table -->
         <div style="margin-top: 1.5rem;" id="profile-modes-container">
-          <h4 style="font-size: 0.95rem; font-weight: 700; color: #fff; margin-bottom: 0.6rem;">Ranked Modes & Daily Wins Breakdown</h4>
+          <h4 style="font-size: 0.95rem; font-weight: 700; color: #fff; margin-bottom: 0.6rem;">Official Bedrock Ranked Leaderboards</h4>
           <div class="table-container" style="margin-bottom: 1.5rem;">
             <table class="custom-table" style="font-size: 0.85rem;">
               <thead>
                 <tr>
                   <th>Game</th>
                   <th>Mode</th>
-                  <th>Wins Today</th>
-                  <th>Total Points / Wins</th>
-                  <th>Kills</th>
-                  <th>Favorite Kit</th>
-                  <th>Rank</th>
+                  <th>Official Leaderboard Points</th>
+                  <th>Official Rank</th>
                 </tr>
               </thead>
               <tbody id="profile-modes-table-body">

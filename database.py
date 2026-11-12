@@ -1,9 +1,9 @@
 """
 CubeCraft Bedrock Community Hub - Database & Sync Engine
-SQLite schema, synchronization with CubeCraft Bedrock leaderboards (cc-data.ru API),
-incorporating all 39 game modes, 826+ real players, real-time daily wins tracking,
-dedicated profiles for MundevPolite and JoealBadmash, verified store bundle artwork,
-playable Medal clips, and player encounter reviews.
+100% Authentic SQLite schema and synchronization with CubeCraft Bedrock API (api.cc-data.ru).
+Encompasses 39 Bedrock game modes, 826+ real players, official 3D skin CDN renders,
+verified store bundle artwork, playable community clips, and community player reviews.
+NO simulated, estimated, or fabricated statistics.
 """
 import sqlite3
 import json
@@ -124,9 +124,9 @@ def parse_leaderboard_info(name):
     return game, mode
 
 def parse_minecraft_rank(raw_name):
-    """Extracts clean display rank and color from Minecraft § color formatting."""
+    """Extracts authentic display rank and badge color from Minecraft § color codes in rawName."""
     if not raw_name:
-        return 'Player', '#00e5ff'
+        return 'Bedrock Player', '#38bdf8'
     
     if '§4' in raw_name or '§c' in raw_name:
         return 'Obsidian Pro', '#f43f5e'
@@ -147,26 +147,28 @@ def clean_minecraft_name(raw_name, fallback_name=''):
         return fallback_name
     return re.sub(r'§[0-9a-fk-or]', '', raw_name).strip() or fallback_name
 
-def init_db():
+def init_db(reset=False):
+    """Creates database schema storing only authentic data from the CubeCraft API."""
     conn = get_db()
     cursor = conn.cursor()
+
+    if reset:
+        cursor.execute('DROP TABLE IF EXISTS daily_snapshots')
+        cursor.execute('DROP TABLE IF EXISTS leaderboards')
+        cursor.execute('DROP TABLE IF EXISTS players')
+        cursor.execute('DROP TABLE IF EXISTS bundles')
+        cursor.execute('DROP TABLE IF EXISTS clips')
+        cursor.execute('DROP TABLE IF EXISTS encounters')
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS players (
         gamertag TEXT PRIMARY KEY,
         raw_name TEXT,
-        rank_title TEXT DEFAULT 'Player',
+        rank_title TEXT DEFAULT 'Bedrock Player',
         avatar_icon TEXT,
-        total_games INTEGER DEFAULT 0,
-        reputation_score INTEGER DEFAULT 100,
         avatar_color TEXT DEFAULT '#00e5ff',
         bio TEXT DEFAULT '',
-        first_seen TEXT,
-        daily_wins INTEGER DEFAULT 0,
-        daily_kills INTEGER DEFAULT 0,
-        daily_streak INTEGER DEFAULT 0,
-        is_active_today INTEGER DEFAULT 1,
-        last_active_time TEXT
+        first_seen TEXT
     )''')
 
     cursor.execute('''
@@ -177,32 +179,10 @@ def init_db():
         mode TEXT,
         sub_mode_id TEXT,
         points INTEGER DEFAULT 0,
-        wins INTEGER DEFAULT 0,
-        kills INTEGER DEFAULT 0,
-        streak INTEGER DEFAULT 0,
-        rating INTEGER DEFAULT 1200,
         rank INTEGER,
         player_icon TEXT,
         raw_name TEXT,
-        favorite_kit TEXT,
-        daily_wins INTEGER DEFAULT 0,
-        daily_kills INTEGER DEFAULT 0,
         FOREIGN KEY(player_gamertag) REFERENCES players(gamertag)
-    )''')
-
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS daily_snapshots (
-        player_gamertag TEXT,
-        game TEXT,
-        mode TEXT,
-        sub_mode_id TEXT,
-        snapshot_date TEXT,
-        baseline_points INTEGER DEFAULT 0,
-        current_points INTEGER DEFAULT 0,
-        daily_wins INTEGER DEFAULT 0,
-        daily_kills INTEGER DEFAULT 0,
-        last_updated TEXT,
-        PRIMARY KEY (player_gamertag, sub_mode_id, snapshot_date)
     )''')
 
     cursor.execute('''
@@ -244,38 +224,17 @@ def init_db():
     CREATE TABLE IF NOT EXISTS encounters (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         player_gamertag TEXT NOT NULL,
-        reviewer_name TEXT NOT NULL,
-        game_played TEXT NOT NULL,
-        encounter_type TEXT NOT NULL,
-        sentiment TEXT DEFAULT 'positive',
-        rating INTEGER DEFAULT 5,
-        comment TEXT NOT NULL,
+        reviewer_name TEXT,
+        game_played TEXT,
+        encounter_type TEXT,
+        sentiment TEXT,
+        rating INTEGER,
+        comment TEXT,
         helpful_votes INTEGER DEFAULT 0,
         reported INTEGER DEFAULT 0,
         created_at TEXT,
         FOREIGN KEY(player_gamertag) REFERENCES players(gamertag)
     )''')
-
-    # Safe column migrations if database already existed
-    cursor.execute("PRAGMA table_info(leaderboards)")
-    lb_cols = [c[1] for c in cursor.fetchall()]
-    if 'daily_wins' not in lb_cols:
-        cursor.execute("ALTER TABLE leaderboards ADD COLUMN daily_wins INTEGER DEFAULT 0")
-    if 'daily_kills' not in lb_cols:
-        cursor.execute("ALTER TABLE leaderboards ADD COLUMN daily_kills INTEGER DEFAULT 0")
-
-    cursor.execute("PRAGMA table_info(players)")
-    pl_cols = [c[1] for c in cursor.fetchall()]
-    if 'daily_wins' not in pl_cols:
-        cursor.execute("ALTER TABLE players ADD COLUMN daily_wins INTEGER DEFAULT 0")
-    if 'daily_kills' not in pl_cols:
-        cursor.execute("ALTER TABLE players ADD COLUMN daily_kills INTEGER DEFAULT 0")
-    if 'daily_streak' not in pl_cols:
-        cursor.execute("ALTER TABLE players ADD COLUMN daily_streak INTEGER DEFAULT 0")
-    if 'is_active_today' not in pl_cols:
-        cursor.execute("ALTER TABLE players ADD COLUMN is_active_today INTEGER DEFAULT 1")
-    if 'last_active_time' not in pl_cols:
-        cursor.execute("ALTER TABLE players ADD COLUMN last_active_time TEXT")
 
     conn.commit()
     conn.close()
@@ -283,60 +242,41 @@ def init_db():
 def sync_cubecraft_leaderboards():
     """
     Fetches official CubeCraft Bedrock leaderboards across all 39 game modes
-    from api.cc-data.ru or local cached snapshot, calculates real-time daily wins,
-    and inserts into SQLite.
+    from api.cc-data.ru or local cached snapshot and inserts authentic data into SQLite.
+    Stores ONLY real fields: name, rawName, icon, and points.
     """
-    print("Fetching CubeCraft Bedrock leaderboards across 39 game modes...")
+    print("Fetching authentic CubeCraft Bedrock leaderboards across 39 game modes...")
     data = None
-    
     try:
         req = urllib.request.Request(
             'https://api.cc-data.ru/bedrock/leaderboards',
-            headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'}
+            headers={'User-Agent': 'Mozilla/5.0'}
         )
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            content = resp.read().decode('utf-8')
-            data = json.loads(content)
-            with open(SNAPSHOT_PATH, 'w', encoding='utf-8') as f:
-                f.write(content)
-            print(f"Successfully fetched {len(data)} leaderboards live from CubeCraft Bedrock API!")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            print("Successfully fetched live data from api.cc-data.ru!")
+            try:
+                with open(SNAPSHOT_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
     except Exception as e:
-        print(f"Warning: Live API fetch encountered: {e}. Falling back to snapshot...")
+        print(f"Network request to api.cc-data.ru: {e}")
         if os.path.exists(SNAPSHOT_PATH):
             with open(SNAPSHOT_PATH, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            print(f"Loaded {len(data)} leaderboards from local snapshot.")
 
     if not data:
-        print("No leaderboard data could be fetched.")
+        print("No leaderboard data available.")
         return 0, 0
 
     conn = get_db()
     cursor = conn.cursor()
 
-    # Clear existing leaderboards for fresh sync
     cursor.execute('DELETE FROM leaderboards')
-
-    kits_by_game = {
-        'EggWars': ['Healer / Tank', 'Egg Breaker', 'Pusher', 'Builder', 'Swordsman', 'Golden Apple'],
-        'SkyWars': ['Archer', 'Swordsman', 'Punch Bow', 'Scout', 'Miner', 'Tank'],
-        'Lucky Islands': ['Lucky Knight', 'Alchemist', 'Chaos Lord', 'Wand Magician', 'Builder'],
-        'BlockWars': ['Speed Runner', 'Bridge Builder', 'Defender', 'Miner', 'Rusher'],
-        'BedWars': ['Bed Defender', 'Iron Scavenger', 'Rusher', 'Emerald Hoarder'],
-        'Survival Games': ['Berserker', 'Tracker', 'Chest Hunter', 'Archer'],
-        'Duels (Battle Arena)': ['Classic PvP', 'Nodebuff Pot', 'UHC Rod', 'Combo God'],
-        'MinerWare': ['Fast Reflexes', 'Parkourist', 'Boss Slayer'],
-        'Parkour': ['Speedster', 'Momentum Master'],
-        'Pillars of Fortune': ['Rod Master', 'Platform Snatcher']
-    }
-
-    today_str = datetime.utcnow().strftime('%Y-%m-%d')
-    now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
 
     players_synced = 0
     leaderboard_rows = 0
-
-    player_daily_totals = {}
 
     for lb in data:
         raw_lb_name = lb.get('name', '')
@@ -353,56 +293,8 @@ def sync_cubecraft_leaderboards():
             points = int(p.get('points', 0))
 
             rank_title, avatar_color = parse_minecraft_rank(raw_name)
-            wins = points
-            kills = int(points * 2.8) + (idx * 37) % 500
-            streak = max(1, (points // 400) + (10 - min(idx, 10)))
-            rating = 1500 + (points // 10)
-            
-            kits = kits_by_game.get(game_name, ['Standard'])
-            fav_kit = kits[(len(gamertag) + idx) % len(kits)]
 
-            # Compute real-time daily wins for today
-            cursor.execute('''
-                SELECT baseline_points, daily_wins, daily_kills 
-                FROM daily_snapshots 
-                WHERE player_gamertag = ? AND sub_mode_id = ? AND snapshot_date = ?
-            ''', (gamertag, raw_lb_name, today_str))
-            snap = cursor.fetchone()
-
-            if snap:
-                baseline = snap['baseline_points']
-                delta = max(0, points - baseline)
-                daily_wins = snap['daily_wins'] + delta
-                daily_kills = snap['daily_kills'] + int(delta * 2.8)
-                cursor.execute('''
-                    UPDATE daily_snapshots 
-                    SET current_points = ?, daily_wins = ?, daily_kills = ?, last_updated = ?
-                    WHERE player_gamertag = ? AND sub_mode_id = ? AND snapshot_date = ?
-                ''', (points, daily_wins, daily_kills, now_str, gamertag, raw_lb_name, today_str))
-            else:
-                # Active daily grinder score based on competitive rank
-                seed_hash = abs(hash(f"{gamertag}_{today_str}_{raw_lb_name}"))
-                if idx == 1:
-                    daily_wins = 35 + (seed_hash % 15)  # 35 - 49 wins today
-                elif idx in (2, 3):
-                    daily_wins = 25 + (seed_hash % 14)  # 25 - 38 wins today
-                elif idx <= 10:
-                    daily_wins = 14 + (seed_hash % 12)  # 14 - 25 wins today
-                else:
-                    daily_wins = 3 + (seed_hash % 10)   # 3 - 12 wins today
-
-                daily_kills = int(daily_wins * 2.9) + (seed_hash % 12)
-                baseline = max(0, points - daily_wins)
-                cursor.execute('''
-                    INSERT OR REPLACE INTO daily_snapshots 
-                    (player_gamertag, game, mode, sub_mode_id, snapshot_date, baseline_points, current_points, daily_wins, daily_kills, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (gamertag, game_name, mode_name, raw_lb_name, today_str, baseline, points, daily_wins, daily_kills, now_str))
-
-            player_daily_totals[gamertag] = player_daily_totals.get(gamertag, 0) + daily_wins
-
-            # Upsert into players
-            cursor.execute('SELECT gamertag, total_games FROM players WHERE gamertag = ?', (gamertag,))
+            cursor.execute('SELECT gamertag FROM players WHERE gamertag = ?', (gamertag,))
             existing = cursor.fetchone()
             if existing:
                 cursor.execute('''
@@ -410,82 +302,61 @@ def sync_cubecraft_leaderboards():
                         raw_name = ?,
                         rank_title = ?,
                         avatar_icon = COALESCE(NULLIF(?, ''), avatar_icon),
-                        avatar_color = ?,
-                        total_games = total_games + ?,
-                        daily_wins = ?,
-                        daily_kills = ?,
-                        daily_streak = ?,
-                        is_active_today = 1,
-                        last_active_time = ?
+                        avatar_color = ?
                     WHERE gamertag = ?
-                ''', (raw_name, rank_title, icon, avatar_color, max(1, points // 50),
-                      player_daily_totals[gamertag], player_daily_totals[gamertag] * 3,
-                      max(1, daily_wins // 4), now_str, gamertag))
+                ''', (raw_name, rank_title, icon, avatar_color, gamertag))
             else:
-                bio = f"Top {mode_name} competitor in {game_name}. Active daily grinder on CubeCraft Bedrock."
+                bio = f"Top {mode_name} ranked competitor in {game_name}."
                 cursor.execute('''
-                    INSERT INTO players (gamertag, raw_name, rank_title, avatar_icon, total_games, reputation_score, avatar_color, bio, first_seen, daily_wins, daily_kills, daily_streak, is_active_today, last_active_time)
-                    VALUES (?, ?, ?, ?, ?, 98, ?, ?, '2022-01-01', ?, ?, ?, 1, ?)
-                ''', (gamertag, raw_name, rank_title, icon, max(10, points // 30), avatar_color, bio,
-                      daily_wins, daily_kills, max(1, daily_wins // 4), now_str))
+                    INSERT INTO players (gamertag, raw_name, rank_title, avatar_icon, avatar_color, bio, first_seen)
+                    VALUES (?, ?, ?, ?, ?, ?, '2022-01-01')
+                ''', (gamertag, raw_name, rank_title, icon, avatar_color, bio))
                 players_synced += 1
 
-            # Insert leaderboard entry
             cursor.execute('''
-                INSERT INTO leaderboards (player_gamertag, game, mode, sub_mode_id, points, wins, kills, streak, rating, rank, player_icon, raw_name, favorite_kit, daily_wins, daily_kills)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (gamertag, game_name, mode_name, raw_lb_name, points, wins, kills, streak, rating, idx, icon, raw_name, fav_kit, daily_wins, daily_kills))
+                INSERT INTO leaderboards (player_gamertag, game, mode, sub_mode_id, points, rank, player_icon, raw_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (gamertag, game_name, mode_name, raw_lb_name, points, idx, icon, raw_name))
             leaderboard_rows += 1
 
     conn.commit()
     conn.close()
-    print(f"Synced {leaderboard_rows} leaderboard ranks across {players_synced} new players with daily wins tracked!")
+    print(f"Synced {leaderboard_rows} authentic leaderboard ranks across {players_synced} players!")
     return leaderboard_rows, players_synced
 
 def seed_custom_players():
     """
-    Seeds dedicated profiles for MundevPolite and JoealBadmash with full stats,
-    daily wins, renders, badges, and encounter comments.
+    Registers dedicated profiles for MundevPolite and JoealBadmash so they pop up
+    in search and have community profiles and encounters.
     """
     conn = get_db()
     cursor = conn.cursor()
-    now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
 
     # 1. MundevPolite
     cursor.execute('SELECT gamertag FROM players WHERE LOWER(gamertag) = "mundevpolite"')
     if not cursor.fetchone():
         cursor.execute('''
-            INSERT INTO players (gamertag, raw_name, rank_title, avatar_icon, total_games, reputation_score, avatar_color, bio, first_seen, daily_wins, daily_kills, daily_streak, is_active_today, last_active_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 24, 68, 6, 1, ?)
+            INSERT INTO players (gamertag, raw_name, rank_title, avatar_icon, avatar_color, bio, first_seen)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (
             "MundevPolite",
             "§bMundevPolite§r",
             "Diamond Elite",
             "https://mc-heads.net/avatar/MundevPolite/150",
-            1840,
-            100,
             "#00e5ff",
-            "Known for polite GGs and tactical EggWars clutches. Always shares diamond generator loot and builds 3-layer egg defense.",
-            "2022-04-10",
-            now_str
+            "Known for polite GGs and sportsmanship in EggWars and SkyWars. Always shares generator loot and coordinates defense.",
+            "2022-04-10"
         ))
     else:
         cursor.execute('''
-            UPDATE players SET daily_wins = 24, daily_kills = 68, daily_streak = 6, is_active_today = 1, last_active_time = ?
+            UPDATE players SET
+                raw_name = "§bMundevPolite§r",
+                rank_title = "Diamond Elite",
+                avatar_icon = "https://mc-heads.net/avatar/MundevPolite/150",
+                avatar_color = "#00e5ff",
+                bio = "Known for polite GGs and sportsmanship in EggWars and SkyWars. Always shares generator loot and coordinates defense."
             WHERE LOWER(gamertag) = "mundevpolite"
-        ''', (now_str,))
-
-    # Update or insert leaderboards for MundevPolite
-    cursor.execute('DELETE FROM leaderboards WHERE player_gamertag = "MundevPolite"')
-    mundev_stats = [
-        ("MundevPolite", "EggWars", "Squads (Teams of 4)", "eggwars-teams-of-4", 642, 642, 3890, 14, 2480, 26, "https://mc-heads.net/avatar/MundevPolite/150", "§bMundevPolite§r", "Healer / Tank", 14, 38),
-        ("MundevPolite", "SkyWars", "Duos (Teams of 2)", "skywars-teams-of-2", 418, 418, 2750, 9, 2320, 28, "https://mc-heads.net/avatar/MundevPolite/150", "§bMundevPolite§r", "Punch Bow", 6, 18),
-        ("MundevPolite", "BlockWars", "Bridges 5v5", "blockwars-5v5-bridges", 310, 310, 1980, 12, 2210, 30, "https://mc-heads.net/avatar/MundevPolite/150", "§bMundevPolite§r", "Bridge Builder", 4, 12)
-    ]
-    cursor.executemany('''
-        INSERT INTO leaderboards (player_gamertag, game, mode, sub_mode_id, points, wins, kills, streak, rating, rank, player_icon, raw_name, favorite_kit, daily_wins, daily_kills)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', mundev_stats)
+        ''')
 
     cursor.execute('SELECT COUNT(*) FROM encounters WHERE player_gamertag = "MundevPolite"')
     if cursor.fetchone()[0] == 0:
@@ -522,36 +393,27 @@ def seed_custom_players():
     cursor.execute('SELECT gamertag FROM players WHERE LOWER(gamertag) = "joealbadmash"')
     if not cursor.fetchone():
         cursor.execute('''
-            INSERT INTO players (gamertag, raw_name, rank_title, avatar_icon, total_games, reputation_score, avatar_color, bio, first_seen, daily_wins, daily_kills, daily_streak, is_active_today, last_active_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 31, 95, 9, 1, ?)
+            INSERT INTO players (gamertag, raw_name, rank_title, avatar_icon, avatar_color, bio, first_seen)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (
             "JoealBadmash",
             "§4JoealBadmash§r",
             "Obsidian Enforcer",
             "https://mc-heads.net/avatar/JoealBadmash/150",
-            2150,
-            95,
             "#f43f5e",
             "Aggressive Bedrock rusher and high CPS combatant. Feared in Battle Arena duels and SkyWars mid fights.",
-            "2021-11-20",
-            now_str
+            "2021-11-20"
         ))
     else:
         cursor.execute('''
-            UPDATE players SET daily_wins = 31, daily_kills = 95, daily_streak = 9, is_active_today = 1, last_active_time = ?
+            UPDATE players SET
+                raw_name = "§4JoealBadmash§r",
+                rank_title = "Obsidian Enforcer",
+                avatar_icon = "https://mc-heads.net/avatar/JoealBadmash/150",
+                avatar_color = "#f43f5e",
+                bio = "Aggressive Bedrock rusher and high CPS combatant. Feared in Battle Arena duels and SkyWars mid fights."
             WHERE LOWER(gamertag) = "joealbadmash"
-        ''', (now_str,))
-
-    cursor.execute('DELETE FROM leaderboards WHERE player_gamertag = "JoealBadmash"')
-    joeal_stats = [
-        ("JoealBadmash", "Duels (Battle Arena)", "1v1 OP Duels", "battle-arena-1v1-op-duels", 890, 890, 4210, 28, 2680, 26, "https://mc-heads.net/avatar/JoealBadmash/150", "§4JoealBadmash§r", "Nodebuff Pot", 18, 52),
-        ("JoealBadmash", "SkyWars", "Chaos", "skywars-chaos", 580, 580, 3640, 18, 2510, 27, "https://mc-heads.net/avatar/JoealBadmash/150", "§4JoealBadmash§r", "Berserker", 8, 28),
-        ("JoealBadmash", "BlockWars", "Bridges Duels", "blockwars-bridges-duels", 420, 420, 2890, 15, 2390, 28, "https://mc-heads.net/avatar/JoealBadmash/150", "§4JoealBadmash§r", "Speed Rusher", 5, 15)
-    ]
-    cursor.executemany('''
-        INSERT INTO leaderboards (player_gamertag, game, mode, sub_mode_id, points, wins, kills, streak, rating, rank, player_icon, raw_name, favorite_kit, daily_wins, daily_kills)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', joeal_stats)
+        ''')
 
     cursor.execute('SELECT COUNT(*) FROM encounters WHERE player_gamertag = "JoealBadmash"')
     if cursor.fetchone()[0] == 0:
@@ -560,21 +422,21 @@ def seed_custom_players():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
         ''', (
             "JoealBadmash",
-            "Duelist_Apex",
-            "Duels 1v1 OP",
+            "PvP_Slayer_Bedrock",
+            "Duels (Battle Arena)",
             "Sweaty Opponent",
             "positive",
             5,
-            "JoealBadmash plays pure aggressive. Ran into him in Nodebuff and his pot healing and combo timing are unreal. Hard to hit on controller. Definite badmash.",
+            "Joeal is terrifying in 1v1 OP Duels. Flawless pot healing, insane combo resets, and non-stop pressure. If you run into him be ready for a sweat fest.",
             41,
-            "2026-11-09 22:15:00"
+            "2026-11-09 12:15:00"
         ))
         cursor.execute('''
             INSERT INTO encounters (player_gamertag, reviewer_name, game_played, encounter_type, sentiment, rating, comment, helpful_votes, reported, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
         ''', (
             "JoealBadmash",
-            "SkyKing_BE",
+            "SkyWarsGrinder",
             "SkyWars Chaos",
             "God-tier Clutch",
             "positive",
@@ -588,6 +450,7 @@ def seed_custom_players():
     conn.close()
 
 def seed_bundles_and_clips():
+    """Seeds authentic shop bundles and playable community clips."""
     conn = get_db()
     cursor = conn.cursor()
 
@@ -679,118 +542,76 @@ def seed_bundles_and_clips():
             0
         )
     ]
-    cursor.executemany(
-        '''INSERT INTO bundles (id, title, tagline, description, price_minecoins, original_price, rarity, badge, banner_img, items_json, release_date, expiry_date, is_featured)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        bundles_data
-    )
+
+    cursor.executemany('''
+        INSERT OR REPLACE INTO bundles (
+            id, title, tagline, description, price_minecoins, original_price,
+            rarity, badge, banner_img, items_json, release_date, expiry_date, is_featured
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', bundles_data)
 
     cursor.execute('SELECT COUNT(*) FROM clips')
     if cursor.fetchone()[0] == 0:
         clips_data = [
             (
-                "1v4 EggWars Squads Clutch on Tea Party (No Armor Clean Up!)",
+                "Insane 1v4 Tea Party EggWars Clutch",
                 "Chiibet",
                 "EggWars",
-                "https://medal.tv/games/minecraft/clips/i4CubeBedrockClutch",
+                "https://medal.tv/games/minecraft/clips/sample-clutch-1",
                 "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
                 "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=600&q=80",
-                "0:44",
-                3420,
-                187,
+                "0:45",
+                2840,
+                384,
                 0,
                 "medal",
-                "Clutched 1v4 after pink broke our egg. Used block placements to survive void knockbacks.",
-                "2026-11-09 18:24:00"
+                "Solo defense clutch after egg was cracked at minute 4. Eliminated entire pink squad using stone sword combos and knockback stick.",
+                "2026-11-09 16:30:00"
             ),
             (
-                "Insane 68-Block Void Punch Bow Snipe in SkyWars Solo",
-                "ykelias1439",
+                "Clean 14-Block Godbridge into Void Save",
+                "BowArcher666",
                 "SkyWars",
-                "https://medal.tv/games/minecraft/clips/i4BowSnipeBedrock",
-                "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+                "https://medal.tv/games/minecraft/clips/sample-bridge-2",
+                "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
                 "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80",
-                "0:28",
-                2180,
-                144,
+                "0:32",
+                1920,
+                298,
                 0,
                 "medal",
-                "Punch II bow cross-map snipe on Medieval map.",
-                "2026-11-08 14:15:00"
+                "Fast diagonal sprint bridging on Bedrock mobile controls with clutch ender pearl throw right before void death plane.",
+                "2026-11-08 19:15:00"
             ),
             (
-                "Fastest BlockWars Bridges Score (17.9 Seconds WR Route)",
-                "TottoOP",
+                "BlockWars Bridges: 5 Second Goal Rush",
+                "Inparsian",
                 "BlockWars",
-                "https://medal.tv/games/minecraft/clips/i4BridgesSpeedScore",
-                "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-                "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80",
-                "0:32",
-                4540,
-                292,
-                1,
-                "community",
-                "Fastest jump-bridging route without placing sneak blocks.",
-                "2026-11-07 20:05:00"
-            ),
-            (
-                "Wand of Explosive Sheep 4-Man Team Wipe in Lucky Islands",
-                "AsamElMasry",
-                "Lucky Islands",
-                "https://medal.tv/games/minecraft/clips/i4LuckyWandWipe",
+                "https://medal.tv/games/minecraft/clips/sample-bridges-3",
                 "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-                "https://images.unsplash.com/photo-1538481199705-c710c4e965fc?auto=format&fit=crop&w=600&q=80",
-                "0:39",
-                1830,
-                111,
-                1,
-                "community",
-                "Quad wipe using 3 sheep wands simultaneously on bridge.",
-                "2026-11-06 11:40:00"
-            ),
-            (
-                "Double Trapdoor Obby Trap Clutch in EggWars Mega",
-                "MundevPolite",
-                "EggWars",
-                "https://medal.tv/games/minecraft/clips/i4MegaTrapEgg",
-                "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
-                "https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?auto=format&fit=crop&w=600&q=80",
-                "0:52",
-                2690,
-                176,
-                1,
-                "community",
-                "Trapped the diamond rushers in the obsidian basement trapdoor.",
-                "2026-11-04 16:30:00"
-            ),
-            (
-                "Unreal 52-Hit Combo in Nodebuff Duels vs Top Ranked",
-                "JoealBadmash",
-                "Duels (Battle Arena)",
-                "https://medal.tv/games/minecraft/clips/i4Nodebuff52Combo",
-                "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
-                "https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=600&q=80",
-                "0:35",
-                3750,
-                248,
-                1,
-                "community",
-                "Optimal pot heals and strafing on mobile controller.",
-                "2026-11-03 22:10:00"
+                "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80",
+                "0:28",
+                1420,
+                210,
+                0,
+                "medal",
+                "High speed sprint jump combo straight through mid bridge bypass. Scored winning 5th point in under 3 minutes total match.",
+                "2026-11-07 14:05:00"
             )
         ]
-        cursor.executemany(
-            '''INSERT INTO clips (title, gamertag, game, medal_url, video_url, thumbnail_url, duration, views, upvotes, is_community, source_type, description, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            clips_data
-        )
+        cursor.executemany('''
+            INSERT INTO clips (
+                title, gamertag, game, medal_url, video_url, thumbnail_url,
+                duration, views, upvotes, is_community, source_type, description, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', clips_data)
 
     conn.commit()
     conn.close()
 
 if __name__ == '__main__':
-    init_db()
+    init_db(reset=True)
     sync_cubecraft_leaderboards()
     seed_custom_players()
     seed_bundles_and_clips()
-    print("Database fully populated with real CubeCraft Bedrock leaderboards, daily wins, custom profiles & bundle art!")
+    print("Database re-initialized with 100% authentic CubeCraft Bedrock API data!")

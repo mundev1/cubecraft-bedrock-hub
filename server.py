@@ -47,34 +47,20 @@ def get_stats():
     total_bundles = cursor.fetchone()[0]
     cursor.execute('SELECT COUNT(DISTINCT game) FROM leaderboards')
     total_games = cursor.fetchone()[0]
-
-    # Daily tracked totals
-    cursor.execute('SELECT COALESCE(SUM(daily_wins), 0), COALESCE(SUM(daily_kills), 0) FROM players')
-    daily_row = cursor.fetchone()
-    today_tracked_wins = daily_row[0] if daily_row else 0
-    today_tracked_kills = daily_row[1] if daily_row else 0
-
-    # Top daily grinder
-    cursor.execute('''
-        SELECT gamertag, rank_title, avatar_icon, avatar_color, daily_wins, daily_kills, daily_streak
-        FROM players 
-        ORDER BY daily_wins DESC 
-        LIMIT 1
-    ''')
-    top_grinder_row = cursor.fetchone()
-    top_daily_grinder = dict(top_grinder_row) if top_grinder_row else None
-
     conn.close()
 
-    # Attempt to fetch live Bedrock online count with quick timeout
-    online_count = 6842
+    # Fetch live Bedrock online player count from CubeCraft status API
+    online_count = 6000
     try:
         req = urllib.request.Request('https://api.cc-data.ru/bedrock/status', headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
+        with urllib.request.urlopen(req, timeout=2.0) as resp:
             status_data = json.loads(resp.read().decode('utf-8'))
-            if 'players' in status_data and 'online' in status_data['players']:
-                online_count = status_data['players']['online']
-            elif 'online' in status_data:
+            if isinstance(status_data, list) and len(status_data) > 0:
+                for entry in status_data:
+                    if entry.get('name') == 'online':
+                        online_count = entry.get('value', 6000)
+                        break
+            elif isinstance(status_data, dict) and 'online' in status_data:
                 online_count = status_data['online']
     except Exception:
         pass
@@ -88,9 +74,6 @@ def get_stats():
             "total_clips": total_clips,
             "active_bundles": total_bundles,
             "total_games": total_games,
-            "today_tracked_wins": today_tracked_wins,
-            "today_tracked_kills": today_tracked_kills,
-            "top_daily_grinder": top_daily_grinder,
             "online_players": online_count,
             "online_bedrock_server": "play.cubecraft.net",
             "bedrock_port": 19132
@@ -174,31 +157,15 @@ def get_games():
 def get_leaderboards():
     game = request.args.get('game', 'EggWars')
     mode = request.args.get('mode', 'All Modes')
-    sort_by = request.args.get('sort_by', 'points')
-    timeframe = request.args.get('timeframe', 'all_time').lower()
     search = request.args.get('search', '').strip()
-
-    if timeframe == 'daily':
-        if sort_by == 'kills':
-            order_clause = 'l.daily_kills DESC, l.daily_wins DESC'
-        else:
-            order_clause = 'l.daily_wins DESC, l.daily_kills DESC, l.points DESC'
-    else:
-        valid_sorts = {
-            'points': 'l.points DESC, l.wins DESC',
-            'wins': 'l.wins DESC, l.points DESC',
-            'kills': 'l.kills DESC',
-            'streak': 'l.streak DESC',
-            'rating': 'l.rating DESC'
-        }
-        order_clause = valid_sorts.get(sort_by, 'l.points DESC, l.wins DESC')
 
     conn = get_db()
     cursor = conn.cursor()
 
     query = '''
-        SELECT l.*, p.rank_title, p.reputation_score, p.avatar_color, p.avatar_icon as player_avatar_icon,
-               p.daily_wins as player_daily_wins, p.daily_kills as player_daily_kills, p.daily_streak as player_daily_streak,
+        SELECT l.id, l.player_gamertag, l.game, l.mode, l.sub_mode_id, l.points, l.rank,
+               COALESCE(l.player_icon, p.avatar_icon) as player_avatar_icon,
+               p.rank_title, p.avatar_color, p.raw_name,
                (SELECT COUNT(*) FROM encounters WHERE player_gamertag = l.player_gamertag) as encounter_count
         FROM leaderboards l
         LEFT JOIN players p ON l.player_gamertag = p.gamertag
@@ -218,7 +185,7 @@ def get_leaderboards():
         query += ' AND LOWER(l.player_gamertag) LIKE LOWER(?)'
         params.append(f'%{search}%')
 
-    query += f' ORDER BY {order_clause} LIMIT 100'
+    query += ' ORDER BY l.points DESC LIMIT 100'
     cursor.execute(query, params)
     rows = cursor.fetchall()
 
@@ -226,8 +193,6 @@ def get_leaderboards():
     for idx, r in enumerate(rows, 1):
         item = dict(r)
         item['dynamic_rank'] = idx
-        if not item.get('player_avatar_icon') and item.get('player_icon'):
-            item['player_avatar_icon'] = item['player_icon']
         results.append(item)
 
     podium = results[:3] if len(results) >= 3 else results
@@ -237,33 +202,10 @@ def get_leaderboards():
         "success": True,
         "game": game,
         "mode": mode,
-        "sort_by": sort_by,
-        "timeframe": timeframe,
         "podium": podium,
         "leaderboard": results,
         "total_results": len(results)
     })
-
-@app.route('/api/leaderboards/daily-leaders', methods=['GET'])
-def get_daily_leaders():
-    """Returns top daily grinders across all CubeCraft Bedrock modes today."""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT p.gamertag, p.raw_name, p.rank_title, p.avatar_icon, p.avatar_color,
-               p.daily_wins, p.daily_kills, p.daily_streak, p.is_active_today,
-               (SELECT l.game || ' (' || l.mode || ')' FROM leaderboards l WHERE l.player_gamertag = p.gamertag ORDER BY l.daily_wins DESC LIMIT 1) as top_mode,
-               (SELECT COUNT(*) FROM encounters WHERE player_gamertag = p.gamertag) as encounter_count
-        FROM players p
-        WHERE p.daily_wins > 0
-        ORDER BY p.daily_wins DESC, p.daily_kills DESC
-        LIMIT 10
-    ''')
-    rows = cursor.fetchall()
-    conn.close()
-
-    leaders = [dict(r) for r in rows]
-    return jsonify({"success": True, "daily_leaders": leaders, "total": len(leaders)})
 
 @app.route('/api/sync-leaderboards', methods=['POST'])
 def sync_leaderboards():
@@ -419,8 +361,8 @@ def add_clip():
     cursor.execute('SELECT gamertag FROM players WHERE LOWER(gamertag) = LOWER(?)', (gamertag,))
     if not cursor.fetchone():
         cursor.execute('''
-            INSERT INTO players (gamertag, raw_name, rank_title, total_games, reputation_score, avatar_color, bio, first_seen)
-            VALUES (?, ?, 'Community Creator', 10, 100, '#00e5ff', 'CubeCraft Bedrock community clip submitter.', ?)
+            INSERT INTO players (gamertag, raw_name, rank_title, avatar_color, bio, first_seen)
+            VALUES (?, ?, 'Community Creator', '#00e5ff', 'CubeCraft Bedrock community clip submitter.', ?)
         ''', (gamertag, gamertag, datetime.utcnow().strftime('%Y-%m-%d')))
         conn.commit()
 
@@ -517,7 +459,7 @@ def search_players():
                 WHEN LOWER(p.gamertag) = 'joealbadmash' THEN 2
                 ELSE 3 
             END,
-            p.total_games DESC
+            p.gamertag ASC
         LIMIT 15
     ''', (f'%{q}%',))
     rows = cursor.fetchall()
@@ -553,8 +495,8 @@ def get_player_profile(gamertag):
             rank_title, avatar_color = parse_minecraft_rank(raw_name)
 
             cursor.execute('''
-                INSERT INTO players (gamertag, raw_name, rank_title, avatar_icon, total_games, reputation_score, avatar_color, bio, first_seen)
-                VALUES (?, ?, ?, ?, 50, 100, ?, 'CubeCraft Bedrock Ranked Player', ?)
+                INSERT INTO players (gamertag, raw_name, rank_title, avatar_icon, avatar_color, bio, first_seen)
+                VALUES (?, ?, ?, ?, ?, 'CubeCraft Bedrock Ranked Player', ?)
             ''', (actual_gt, raw_name, rank_title, icon, avatar_color, datetime.utcnow().strftime('%Y-%m-%d')))
             conn.commit()
 
@@ -565,9 +507,9 @@ def get_player_profile(gamertag):
                 pos = lb.get('position', 1)
                 pts = lb.get('points', 0)
                 cursor.execute('''
-                    INSERT INTO leaderboards (player_gamertag, game, mode, sub_mode_id, points, wins, kills, streak, rating, rank, player_icon, raw_name, favorite_kit)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 10, ?, ?, ?, ?, 'Standard')
-                ''', (actual_gt, g, m, lb_name, pts, pts, pts * 3, 1500 + pts // 10, pos, icon, raw_name))
+                    INSERT INTO leaderboards (player_gamertag, game, mode, sub_mode_id, points, rank, player_icon, raw_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (actual_gt, g, m, lb_name, pts, pos, icon, raw_name))
             conn.commit()
 
             cursor.execute('SELECT * FROM players WHERE gamertag = ?', (actual_gt,))
@@ -579,10 +521,8 @@ def get_player_profile(gamertag):
             "raw_name": gamertag,
             "rank_title": "Bedrock Player",
             "avatar_icon": None,
-            "total_games": 0,
-            "reputation_score": 100,
             "avatar_color": "#00e5ff",
-            "bio": "Minecraft Bedrock CubeCraft adventurer.",
+            "bio": "Minecraft Bedrock adventurer.",
             "first_seen": "Recently Seen",
             "is_new": True
         }
@@ -628,14 +568,6 @@ def get_player_profile(gamertag):
 
     conn.close()
 
-    daily_stats = {
-        "daily_wins": player.get('daily_wins', 0) if isinstance(player, dict) else 0,
-        "daily_kills": player.get('daily_kills', 0) if isinstance(player, dict) else 0,
-        "daily_streak": player.get('daily_streak', 0) if isinstance(player, dict) else 0,
-        "is_active_today": bool(player.get('is_active_today', 1)) if isinstance(player, dict) else True,
-        "last_active_time": player.get('last_active_time', 'Active Today') if isinstance(player, dict) else 'Active Today'
-    }
-
     return jsonify({
         "success": True,
         "player": player,
@@ -647,7 +579,6 @@ def get_player_profile(gamertag):
             "badges": badges,
             "tag_breakdown": tag_counts
         },
-        "daily_stats": daily_stats,
         "leaderboards": leaderboards,
         "encounters": encounters
     })
@@ -684,8 +615,8 @@ def add_player_encounter(gamertag):
         colors = ["#00e5ff", "#38bdf8", "#10b981", "#fbbf24", "#a855f7", "#f43f5e"]
         chosen_color = colors[len(gamertag) % len(colors)]
         cursor.execute('''
-            INSERT INTO players (gamertag, raw_name, rank_title, total_games, reputation_score, avatar_color, bio, first_seen)
-            VALUES (?, ?, 'Player', 1, 100, ?, 'Discovered in Bedrock lobby.', ?)
+            INSERT INTO players (gamertag, raw_name, rank_title, avatar_color, bio, first_seen)
+            VALUES (?, ?, 'Bedrock Player', ?, 'Discovered in Bedrock lobby.', ?)
         ''', (gamertag.strip(), gamertag.strip(), chosen_color, datetime.utcnow().strftime('%Y-%m-%d')))
         player_actual_tag = gamertag.strip()
     else:
@@ -707,8 +638,6 @@ def add_player_encounter(gamertag):
         new_score = max(10, min(100, int((positives * 100 + neutrals * 75 + negatives * 20) / total)))
     else:
         new_score = 100
-
-    cursor.execute('UPDATE players SET reputation_score = ? WHERE LOWER(gamertag) = LOWER(?)', (new_score, gamertag))
 
     conn.commit()
     conn.close()
