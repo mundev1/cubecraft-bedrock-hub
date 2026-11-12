@@ -314,5 +314,116 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         self.assertIn('rank_distribution', data)
         self.assertIn('server_tracker', data)
 
+    def test_strategy_maps_list_and_filters(self):
+        # 1. Fetch all maps
+        res = self.app.get('/api/strategy/maps')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertEqual(data['count'], 5)
+
+        names = [m['name'] for m in data['maps']]
+        self.assertIn('Tea Party', names)
+        self.assertIn('Dwarven', names)
+        self.assertIn('Atlantis', names)
+        self.assertIn('Trees', names)
+        self.assertIn('Rainbow', names)
+
+        # 2. Filter by EggWars
+        res_egg = self.app.get('/api/strategy/maps?game=EggWars')
+        self.assertEqual(res_egg.status_code, 200)
+        data_egg = json.loads(res_egg.data)
+        self.assertEqual(data_egg['count'], 3)
+        for m in data_egg['maps']:
+            self.assertEqual(m['game'], 'EggWars')
+
+        # 3. Filter by SkyWars
+        res_sky = self.app.get('/api/strategy/maps?game=SkyWars')
+        self.assertEqual(res_sky.status_code, 200)
+        data_sky = json.loads(res_sky.data)
+        self.assertEqual(data_sky['count'], 2)
+        for m in data_sky['maps']:
+            self.assertEqual(m['game'], 'SkyWars')
+
+    def test_strategy_map_detail(self):
+        # 1. Existing map
+        res = self.app.get('/api/strategy/maps/eggwars_tea_party')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        m = data['map']
+        self.assertEqual(m['name'], 'Tea Party')
+        self.assertEqual(m['game'], 'EggWars')
+        self.assertIn('tactics_rush', m)
+        self.assertIn('tactics_defense', m)
+        self.assertIn('tactics_mid_control', m)
+        self.assertIn('generator_breakdown', m)
+        self.assertIn('bridging_distances', m)
+        self.assertGreater(len(m['bridging_distances']), 0)
+
+        # 2. Non-existent map
+        res_404 = self.app.get('/api/strategy/maps/unknown_map_xyz')
+        self.assertEqual(res_404.status_code, 404)
+
+    def test_strategy_generators_authentic_rates(self):
+        res = self.app.get('/api/strategy/generators')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        gens = data['generators']
+        self.assertIn('iron', gens)
+        self.assertIn('gold', gens)
+        self.assertIn('diamond', gens)
+
+        # Verify authentic Iron generator tiers
+        iron_tiers = {t['tier']: t for t in gens['iron']['tiers']}
+        self.assertEqual(iron_tiers[1]['rate_per_min'], 30.0)
+        self.assertEqual(iron_tiers[2]['rate_per_min'], 60.0)
+        self.assertEqual(iron_tiers[3]['rate_per_min'], 120.0)
+        self.assertEqual(iron_tiers[4]['rate_per_min'], 240.0)
+
+        # Verify authentic Gold generator tiers
+        gold_tiers = {t['tier']: t for t in gens['gold']['tiers']}
+        self.assertEqual(gold_tiers[1]['rate_per_min'], 15.0)
+        self.assertEqual(gold_tiers[2]['rate_per_min'], 30.0)
+        self.assertEqual(gold_tiers[3]['rate_per_min'], 60.0)
+        self.assertEqual(gold_tiers[4]['rate_per_min'], 120.0)
+
+        # Verify authentic Diamond generator tiers
+        dia_tiers = {t['tier']: t for t in gens['diamond']['tiers']}
+        self.assertEqual(dia_tiers[1]['rate_per_min'], 2.0)
+        self.assertEqual(dia_tiers[2]['rate_per_min'], 4.0)
+        self.assertEqual(dia_tiers[3]['rate_per_min'], 8.0)
+        self.assertEqual(dia_tiers[4]['rate_per_min'], 16.0)
+
+    def test_strategy_bridging_benchmarks(self):
+        res = self.app.get('/api/strategy/bridging-benchmarks')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertEqual(data['mechanics']['jump_bridge_speed_bps'], 5.6)
+        self.assertEqual(data['mechanics']['sneak_bridge_speed_bps'], 1.6)
+
+        benchmarks = data['benchmarks']
+        self.assertGreaterEqual(len(benchmarks), 10)
+        # Check that benchmarks are ordered by distance ascending
+        for i in range(len(benchmarks) - 1):
+            self.assertLessEqual(benchmarks[i]['distance_blocks'], benchmarks[i+1]['distance_blocks'])
+
+        # Check key distances
+        targets = [b['target'] for b in benchmarks]
+        self.assertTrue(any('Neighbor' in t for t in targets))
+        self.assertTrue(any('Mid' in t or 'Forge' in t or 'Cake' in t for t in targets))
+
+    def test_strategy_overview_bundled(self):
+        res = self.app.get('/api/strategy/overview')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertIn('maps', data)
+        self.assertIn('generators', data)
+        self.assertIn('bridging', data)
+        self.assertEqual(len(data['maps']), 5)
+
 if __name__ == '__main__':
     unittest.main()

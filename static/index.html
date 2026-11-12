@@ -36,6 +36,9 @@
           <li class="nav-item" data-view="analytics">
             <a href="#analytics">📊 Analytics</a>
           </li>
+          <li class="nav-item" data-view="maps-guide">
+            <a href="#maps-guide">🗺️ Maps & Strategy</a>
+          </li>
           <li class="nav-item" data-view="marketplace">
             <a href="#marketplace">🛒 Marketplace</a>
           </li>
@@ -394,6 +397,253 @@
             <div style="font-size: 0.78rem; background: var(--bg-surface-elevated); padding: 0.6rem 0.8rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); color: #fff;">
               ⚡ <strong>Best For:</strong> Solo EggWars/SkyWars win grinding, completing seasonal quests, and avoiding sweaty 4-stack squads.
             </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       View: Official Bedrock Mode & Maps Strategy Guide
+       ======================================================================== -->
+  <section id="view-maps-guide" class="view-section">
+    <div class="container">
+      
+      <!-- Strategy Guide Header Banner -->
+      <div class="controls-bar" style="flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+          <h2 style="font-size: 1.4rem; font-weight: 800; display: flex; align-items: center; gap: 0.5rem;">
+            <span>🗺️ Official Bedrock Mode & Maps Strategy Guide</span>
+            <span class="bundle-item-pill" style="color: var(--accent-cyan); font-size: 0.75rem;">Bedrock Edition Meta</span>
+          </h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+            Interactive tactical blueprints for legendary CubeCraft maps, official generator upgrade costs & diamond-per-minute timers, and void bridging speed benchmarks.
+          </p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-outline btn-sm" id="refresh-maps-guide-btn" title="Refresh Strategy Guide">
+            🔄 Refresh Data
+          </button>
+        </div>
+      </div>
+
+      <!-- Strategy Sub-Navigation Tabs -->
+      <div class="guide-nav-bar" style="display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem; margin-bottom: 1.75rem; overflow-x: auto;">
+        <button class="guide-tab-btn active" data-guide-tab="blueprints">
+          🗺️ Map Blueprints & Tactics
+        </button>
+        <button class="guide-tab-btn" data-guide-tab="generators">
+          ⚙️ Generator Economics & Live Calculator
+        </button>
+        <button class="guide-tab-btn" data-guide-tab="bridging">
+          📏 Void Bridging Benchmarks
+        </button>
+      </div>
+
+      <!-- Tab Panel 1: Map Blueprints -->
+      <div id="guide-panel-blueprints" class="guide-tab-panel active">
+        <!-- Filter Bar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+          <div class="filter-group">
+            <button class="filter-btn map-filter-btn active" data-filter="all">All Maps (5)</button>
+            <button class="filter-btn map-filter-btn" data-filter="EggWars">🥚 EggWars (3)</button>
+            <button class="filter-btn map-filter-btn" data-filter="SkyWars">☁️ SkyWars (2)</button>
+          </div>
+          <div style="font-size: 0.82rem; color: var(--text-muted);">
+            Click any map card to inspect the complete tactical rush, egg defense, and mid control blueprint.
+          </div>
+        </div>
+
+        <!-- Maps Grid -->
+        <div class="maps-grid" id="maps-blueprint-grid">
+          <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: var(--text-muted);">
+            <div class="spinner"></div>
+            <p style="margin-top: 1rem;">Loading official Bedrock map blueprints...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Panel 2: Generator Economics & Live Yield Calculator -->
+      <div id="guide-panel-generators" class="guide-tab-panel" style="display: none;">
+        
+        <!-- Interactive Live Generator Yield Calculator -->
+        <div class="gen-calculator-card" style="background: var(--bg-surface); border: 1px solid var(--border-glow); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 2rem; position: relative; overflow: hidden;">
+          <div style="position: absolute; top: -30px; right: -30px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(0, 229, 255, 0.15) 0%, transparent 70%); pointer-events: none;"></div>
+          
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+            <div>
+              <h3 style="font-size: 1.25rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                <span>⚡ Interactive Generator Yield & Timing Calculator</span>
+                <span class="badge" style="background: rgba(0, 229, 255, 0.15); color: var(--accent-cyan);">Real-time Simulator</span>
+              </h3>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+                Calculate exact resource yields, diamond spawn intervals, and return-on-investment (ROI) based on official Bedrock tick intervals.
+              </p>
+            </div>
+          </div>
+
+          <!-- Calculator Controls Grid -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; background: var(--bg-surface-elevated); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin-bottom: 1.5rem;">
+            
+            <!-- Control 1: Generator Type -->
+            <div>
+              <label class="form-label" for="calc-gen-type" style="font-weight: 700;">Generator Resource</label>
+              <select id="calc-gen-type" class="form-control" style="font-weight: 600;">
+                <option value="diamond" selected>💎 Diamond Generator</option>
+                <option value="iron">⛏️ Iron Generator</option>
+                <option value="gold">🪙 Gold Generator</option>
+              </select>
+            </div>
+
+            <!-- Control 2: Generator Tier -->
+            <div>
+              <label class="form-label" for="calc-gen-tier" style="font-weight: 700;">Upgrade Tier</label>
+              <select id="calc-gen-tier" class="form-control" style="font-weight: 600;">
+                <option value="1">Tier 1 (Base Spawn)</option>
+                <option value="2">Tier 2 (Enhanced)</option>
+                <option value="3" selected>Tier 3 (Rapid Flow)</option>
+                <option value="4">Tier 4 (Max Overclocked)</option>
+              </select>
+            </div>
+
+            <!-- Control 3: Generator Count -->
+            <div>
+              <label class="form-label" for="calc-gen-count" style="font-weight: 700;">Number of Active Gens</label>
+              <select id="calc-gen-count" class="form-control" style="font-weight: 600;">
+                <option value="1">1 Generator (Solo/Base)</option>
+                <option value="2">2 Generators (Sub-Island)</option>
+                <option value="4" selected>4 Generators (Full Mid Control)</option>
+              </select>
+            </div>
+
+            <!-- Control 4: Duration Slider -->
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <label class="form-label" for="calc-gen-duration" style="margin-bottom: 0; font-weight: 700;">Match Duration</label>
+                <span id="calc-duration-badge" style="font-size: 0.85rem; font-weight: 800; color: var(--accent-cyan); background: rgba(0,229,255,0.1); padding: 2px 8px; border-radius: 4px;">5 Minutes</span>
+              </div>
+              <input type="range" id="calc-gen-duration" min="1" max="15" value="5" step="1" style="width: 100%; accent-color: var(--accent-cyan); cursor: pointer;">
+              <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-subtle); margin-top: 0.2rem;">
+                <span>1m (Rush)</span>
+                <span>5m (Midgame)</span>
+                <span>15m (Endgame)</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Dynamic Output KPI Ribbon -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+            
+            <div style="background: rgba(0, 229, 255, 0.05); border: 1px solid rgba(0, 229, 255, 0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--accent-cyan); letter-spacing: 0.05em; font-weight: 700;">Yield Rate</div>
+              <div id="calc-kpi-rate" style="font-size: 1.7rem; font-weight: 900; color: #fff; margin-top: 0.25rem;">32.0 / min</div>
+              <div id="calc-kpi-interval" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">1 item every 7.5s (per gen)</div>
+            </div>
+
+            <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; text-transform: uppercase; color: #10b981; letter-spacing: 0.05em; font-weight: 700;">Total Output Generated</div>
+              <div id="calc-kpi-total" style="font-size: 1.7rem; font-weight: 900; color: #10b981; margin-top: 0.25rem;">160 Diamonds</div>
+              <div id="calc-kpi-duration-sub" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">Over 5 minute duration</div>
+            </div>
+
+            <div style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; text-transform: uppercase; color: #fbbf24; letter-spacing: 0.05em; font-weight: 700;">Upgrade Investment</div>
+              <div id="calc-kpi-cost" style="font-size: 1.7rem; font-weight: 900; color: #fbbf24; margin-top: 0.25rem;">20 Diamonds</div>
+              <div id="calc-kpi-cost-type" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">To unlock Tier 3</div>
+            </div>
+
+            <div style="background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: var(--radius-md); padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; text-transform: uppercase; color: #a855f7; letter-spacing: 0.05em; font-weight: 700;">Breakeven ROI Time</div>
+              <div id="calc-kpi-roi" style="font-size: 1.7rem; font-weight: 900; color: #a855f7; margin-top: 0.25rem;">2.5 Minutes</div>
+              <div id="calc-kpi-roi-sub" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">Net profit after payback</div>
+            </div>
+
+          </div>
+
+          <!-- Tactical Pro-Tip Callout Box -->
+          <div id="calc-tactical-tip" style="background: var(--bg-surface-elevated); border-left: 4px solid var(--accent-cyan); padding: 0.85rem 1.25rem; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 0.85rem; color: var(--text-main); line-height: 1.5;">
+            💡 <strong>Bedrock Strategy Tip:</strong> Controlling 4 mid Diamond generators at Tier 3 produces a staggering 32 diamonds per minute. In under 2 minutes, your squad can outfit all 4 players with full Diamond Armor (10 diamonds each) and Sharpness Swords!
+          </div>
+
+        </div>
+
+        <!-- Official Generator Reference Tables (Iron / Gold / Diamond) -->
+        <h3 style="font-size: 1.2rem; font-weight: 800; color: #fff; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+          <span>📋 Official CubeCraft Bedrock Generator Upgrade Tiers</span>
+        </h3>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;" id="generator-reference-cards">
+          <!-- Populated by JavaScript -->
+        </div>
+
+      </div>
+
+      <!-- Tab Panel 3: Void Bridging Benchmarks -->
+      <div id="guide-panel-bridging" class="guide-tab-panel" style="display: none;">
+        
+        <!-- Bedrock Mechanics Highlight Callout -->
+        <div style="background: linear-gradient(135deg, rgba(0, 229, 255, 0.08) 0%, rgba(11, 15, 25, 0.95) 100%); border: 1px solid rgba(0, 229, 255, 0.3); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 2rem;">
+          <div style="display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+            <div style="font-size: 2.2rem; line-height: 1;">⚡</div>
+            <div style="flex: 1; min-width: 280px;">
+              <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff; margin-bottom: 0.4rem;">
+                Bedrock Sprint Jump-Bridge Physics vs Java Sneak-Bridging
+              </h3>
+              <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 0.75rem;">
+                Unlike Java Edition where bridge-building requires crouch-peeking edges, Minecraft Bedrock Edition allows placing blocks directly in front while sprinting forward. At full forward sprint-jump, players traverse void gaps at <strong>~5.6 blocks per second</strong>. Standard crouching sneak-bridging moves at only <strong>~1.6 blocks per second</strong>.
+              </p>
+              <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.82rem;">
+                <div style="color: var(--accent-cyan);">🚀 <strong>Sprint Jump-Bridge:</strong> 5.6 blocks/sec (Instant rush)</div>
+                <div style="color: #fbbf24;">🚶 <strong>Sneak-Bridge:</strong> 1.6 blocks/sec (High safety)</div>
+                <div style="color: #10b981;">📦 <strong>Standard Stack:</strong> 64 blocks (Sandstone / Wool)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bridging Benchmarks Filter & Interactive Distance Ruler -->
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+            <div class="filter-group">
+              <button class="filter-btn bridge-filter-btn active" data-filter="all">All Void Gaps (13)</button>
+              <button class="filter-btn bridge-filter-btn" data-filter="EggWars">🥚 EggWars Gaps</button>
+              <button class="filter-btn bridge-filter-btn" data-filter="SkyWars">☁️ SkyWars Gaps</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <label for="bridge-max-distance" style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">Max Distance Filter:</label>
+              <input type="range" id="bridge-max-distance" min="15" max="45" value="45" step="1" style="accent-color: var(--accent-cyan); cursor: pointer; width: 140px;">
+              <span id="bridge-max-distance-label" style="font-size: 0.85rem; font-weight: 800; color: var(--accent-cyan); min-width: 60px;">≤ 45 blk</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Benchmarks Table Container -->
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+          <div style="overflow-x: auto;">
+            <table class="table" style="margin-bottom: 0;">
+              <thead>
+                <tr>
+                  <th>Map & Game</th>
+                  <th>Target Void Gap</th>
+                  <th>Distance (Blocks)</th>
+                  <th>Bedrock Sprint Time</th>
+                  <th>Sneak Time</th>
+                  <th>Blocks / Stacks</th>
+                  <th>Danger Rating</th>
+                  <th>Tactical Recommendation</th>
+                </tr>
+              </thead>
+              <tbody id="bridging-benchmarks-tbody">
+                <tr>
+                  <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    Loading void bridging benchmarks...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -805,6 +1055,19 @@
         <button class="close-btn">&times;</button>
       </div>
       <div class="modal-body" id="marketplace-modal-body">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Map Blueprint & Strategy Inspection -->
+  <div id="map-modal" class="modal-overlay">
+    <div class="modal-card wide" style="max-width: 900px;">
+      <div class="modal-header">
+        <h3 id="map-modal-title">Map Blueprint & Strategy</h3>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="map-modal-body">
         <!-- Injected via JavaScript -->
       </div>
     </div>

@@ -32,7 +32,21 @@ const state = {
   recentEncounters: [],
   encounterTagFilter: 'all',
   activeModal: null,
-  activeVideoClip: null
+  activeVideoClip: null,
+  mapsGuide: {
+    maps: [],
+    generators: null,
+    bridging: null,
+    selectedFilter: 'all',
+    selectedBridgeFilter: 'all',
+    maxBridgeDistance: 45,
+    calc: {
+      type: 'diamond',
+      tier: 3,
+      count: 4,
+      duration: 5
+    }
+  }
 };
 
 // Utilities
@@ -88,6 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initMarketplaceControls();
   initAnalytics();
   loadAnalytics();
+  initMapsGuide();
+  loadMapsGuide();
   loadClips();
   loadRecentEncounters();
   initModalListeners();
@@ -136,10 +152,12 @@ function handleHashRouting() {
     loadPlayerProfile(gamertag);
   } else if (hash === 'bundles') {
     switchView('marketplace');
-  } else if (['leaderboards', 'analytics', 'marketplace', 'clips', 'encounters'].includes(hash)) {
+  } else if (['leaderboards', 'analytics', 'maps-guide', 'marketplace', 'clips', 'encounters'].includes(hash)) {
     switchView(hash);
     if (hash === 'analytics') {
       loadAnalytics();
+    } else if (hash === 'maps-guide') {
+      loadMapsGuide();
     }
   }
 }
@@ -1711,4 +1729,604 @@ function closeModal(modal) {
     if (playerBox) playerBox.innerHTML = '';
     state.activeVideoClip = null;
   }
+}
+
+// ==========================================================================
+// Official Bedrock Mode & Maps Strategy Guide
+// ==========================================================================
+
+function initMapsGuide() {
+  // Guide Subtabs (Blueprints, Generators, Bridging)
+  const tabBtns = document.querySelectorAll('.guide-tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const targetTab = btn.getAttribute('data-guide-tab');
+      document.querySelectorAll('.guide-tab-panel').forEach(p => {
+        p.style.display = 'none';
+        p.classList.remove('active');
+      });
+
+      const activePanel = document.getElementById(`guide-panel-${targetTab}`);
+      if (activePanel) {
+        activePanel.style.display = 'block';
+        activePanel.classList.add('active');
+      }
+    });
+  });
+
+  // Map Filter Buttons (All, EggWars, SkyWars)
+  const mapFilterBtns = document.querySelectorAll('.map-filter-btn');
+  mapFilterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      mapFilterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.mapsGuide.selectedFilter = btn.getAttribute('data-filter');
+      renderMapsGrid();
+    });
+  });
+
+  // Void Bridging Filter Buttons
+  const bridgeFilterBtns = document.querySelectorAll('.bridge-filter-btn');
+  bridgeFilterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      bridgeFilterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.mapsGuide.selectedBridgeFilter = btn.getAttribute('data-filter');
+      renderBridgingBenchmarks();
+    });
+  });
+
+  // Bridging Distance Slider
+  const distSlider = document.getElementById('bridge-max-distance');
+  const distLabel = document.getElementById('bridge-max-distance-label');
+  if (distSlider && distLabel) {
+    distSlider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      distLabel.innerText = `≤ ${val} blk`;
+      state.mapsGuide.maxBridgeDistance = val;
+      renderBridgingBenchmarks();
+    });
+  }
+
+  // Refresh button
+  const refreshBtn = document.getElementById('refresh-maps-guide-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      loadMapsGuide(true);
+      showToast('Refreshing strategy blueprints & generator data...');
+    });
+  }
+
+  initGeneratorCalculator();
+}
+
+async function loadMapsGuide(force = false) {
+  if (state.mapsGuide.maps.length > 0 && !force) {
+    renderMapsGrid();
+    renderGeneratorReference();
+    updateGeneratorCalculator();
+    renderBridgingBenchmarks();
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/strategy/overview');
+    const data = await res.json();
+    if (data.success) {
+      state.mapsGuide.maps = data.maps || [];
+      state.mapsGuide.generators = data.generators || null;
+      state.mapsGuide.bridging = data.bridging || null;
+
+      renderMapsGrid();
+      renderGeneratorReference();
+      updateGeneratorCalculator();
+      renderBridgingBenchmarks();
+    }
+  } catch (err) {
+    console.error('Failed to load strategy guide overview:', err);
+    const grid = document.getElementById('maps-blueprint-grid');
+    if (grid) {
+      grid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: #f43f5e;">
+          Failed to load map blueprints. Please click 'Refresh Data'.
+        </div>
+      `;
+    }
+  }
+}
+
+function renderMapsGrid() {
+  const grid = document.getElementById('maps-blueprint-grid');
+  if (!grid) return;
+
+  const filter = state.mapsGuide.selectedFilter;
+  const filtered = state.mapsGuide.maps.filter(m => {
+    if (filter === 'all') return true;
+    return m.game.toLowerCase() === filter.toLowerCase();
+  });
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: var(--text-muted);">
+        No map blueprints found for this filter.
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(m => {
+    const isEgg = m.game === 'EggWars';
+    const gameBadgeColor = isEgg ? 'var(--accent-cyan)' : 'var(--accent-emerald)';
+    const gameIcon = isEgg ? '🥚' : '☁️';
+
+    // Format bridging quick pills
+    let bridgePills = '';
+    if (Array.isArray(m.bridging_distances)) {
+      bridgePills = m.bridging_distances.slice(0, 2).map(b => `
+        <span class="map-distance-pill">
+          ${sanitizeHTML(b.target.split(' ')[0])}: <strong>${b.distance_blocks} blk</strong> (${b.jump_bridge_sec}s)
+        </span>
+      `).join('');
+    }
+
+    // Format generator summary
+    let genSummary = '';
+    if (isEgg && m.generator_breakdown) {
+      const gb = m.generator_breakdown;
+      const starter = gb.starter_island || [];
+      const mid = gb.middle_island ? gb.middle_island[0] : null;
+      const starterText = starter.map(s => `${s.count} ${s.type}`).join(', ');
+      const midText = mid && mid.generators ? `${mid.generators[0].count} Dia Mid` : '';
+      genSummary = `<span style="font-size: 0.76rem; color: #fbbf24;">⚡ ${starterText} • ${midText}</span>`;
+    } else {
+      genSummary = `<span style="font-size: 0.76rem; color: #10b981;">📦 Fast Chest Loot Rush • ${m.teams_count} Spawns</span>`;
+    }
+
+    return `
+      <div class="map-card" data-map-id="${sanitizeHTML(m.map_id)}">
+        <div class="map-card-thumb-wrap">
+          <img src="${sanitizeHTML(m.thumbnail_url)}" alt="${sanitizeHTML(m.name)}" class="map-card-thumb" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=600&auto=format&fit=crop&q=80'">
+          <div class="map-card-gradient"></div>
+          <div class="map-card-badge-row">
+            <span class="badge" style="background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); color: ${gameBadgeColor}; border: 1px solid ${gameBadgeColor};">
+              ${gameIcon} ${sanitizeHTML(m.game)}
+            </span>
+            <span class="badge" style="background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); color: #fff;">
+              ${sanitizeHTML(m.difficulty)}
+            </span>
+          </div>
+          <div class="map-card-title-row">
+            <div class="map-card-theme">${sanitizeHTML(m.theme)}</div>
+            <h3>${sanitizeHTML(m.name)}</h3>
+          </div>
+        </div>
+
+        <div class="map-card-body">
+          <p class="map-card-desc">${sanitizeHTML(m.description)}</p>
+
+          <div class="map-quick-benchmarks">
+            <div class="map-quick-benchmarks-title">
+              <span>📏 Key Void Rush Gaps</span>
+            </div>
+            <div>${bridgePills}</div>
+          </div>
+
+          <div style="margin-bottom: 1rem;">
+            ${genSummary}
+          </div>
+
+          <div class="map-card-footer">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">
+              👥 ${sanitizeHTML(m.mode_variant)}
+            </span>
+            <button class="btn btn-outline btn-sm inspect-map-btn" data-map-id="${sanitizeHTML(m.map_id)}" style="border-color: var(--accent-cyan); color: var(--accent-cyan);">
+              Blueprint & Tactics ➔
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Attach button clicks
+  grid.querySelectorAll('.inspect-map-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const mapId = btn.getAttribute('data-map-id');
+      openMapModal(mapId);
+    });
+  });
+
+  // Also allow clicking the entire card
+  grid.querySelectorAll('.map-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const mapId = card.getAttribute('data-map-id');
+      openMapModal(mapId);
+    });
+  });
+}
+
+function openMapModal(mapId) {
+  const map = state.mapsGuide.maps.find(m => m.map_id === mapId);
+  const modal = document.getElementById('map-modal');
+  const titleEl = document.getElementById('map-modal-title');
+  const bodyEl = document.getElementById('map-modal-body');
+
+  if (!map || !modal || !bodyEl) return;
+
+  const isEgg = map.game === 'EggWars';
+  const gameIcon = isEgg ? '🥚' : '☁️';
+  titleEl.innerHTML = `${gameIcon} ${sanitizeHTML(map.name)} — Tactical Blueprint & Strategy`;
+
+  // Bridging rows
+  let bridgingTableRows = '';
+  if (Array.isArray(map.bridging_distances)) {
+    bridgingTableRows = map.bridging_distances.map(b => {
+      const dangerClass = `danger-${b.danger_level.toLowerCase()}`;
+      return `
+        <tr>
+          <td style="font-weight: 700; color: #fff;">${sanitizeHTML(b.target)}</td>
+          <td><strong style="color: var(--accent-cyan);">${b.distance_blocks}</strong> blk</td>
+          <td style="color: #10b981; font-weight: 700;">${b.jump_bridge_sec}s</td>
+          <td style="color: var(--text-muted);">${b.sneak_bridge_sec}s</td>
+          <td>${b.blocks_needed} (${(b.blocks_needed / 64).toFixed(2)} stack)</td>
+          <td><span class="danger-badge ${dangerClass}">${sanitizeHTML(b.danger_level)}</span></td>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${sanitizeHTML(b.tactical_note)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Generator breakdown display
+  let genBreakdownHTML = '';
+  if (isEgg && map.generator_breakdown) {
+    const gb = map.generator_breakdown;
+    const starter = gb.starter_island || [];
+    const sub = gb.sub_islands || [];
+    const mid = gb.middle_island || [];
+
+    genBreakdownHTML = `
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <h4 style="font-size: 1rem; font-weight: 800; color: #fff; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem;">
+          <span>⚙️ Generator Node Placements</span>
+        </h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+          <div style="background: var(--bg-surface); padding: 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 0.76rem; text-transform: uppercase; color: var(--accent-cyan); font-weight: 700;">Starter Island</div>
+            <ul style="margin: 0.4rem 0 0 1rem; padding: 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.6;">
+              ${starter.map(s => `<li><strong>${s.count}x ${s.type}</strong> (${s.location})</li>`).join('')}
+            </ul>
+          </div>
+          <div style="background: var(--bg-surface); padding: 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 0.76rem; text-transform: uppercase; color: #10b981; font-weight: 700;">Sub-Islands</div>
+            <ul style="margin: 0.4rem 0 0 1rem; padding: 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.6;">
+              ${sub.map(s => `<li><strong>${s.count}x ${s.name}</strong> (${s.generators.map(g => `${g.count}x ${g.type} Lv${g.tier}`).join(', ')})</li>`).join('')}
+            </ul>
+          </div>
+          <div style="background: var(--bg-surface); padding: 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 0.76rem; text-transform: uppercase; color: #fbbf24; font-weight: 700;">Central Mid Island</div>
+            <ul style="margin: 0.4rem 0 0 1rem; padding: 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.6;">
+              ${mid.map(m => `<li><strong>${m.name}</strong> (${m.generators.map(g => `${g.count}x ${g.type} Lv${g.tier}`).join(', ')})</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  bodyEl.innerHTML = `
+    <!-- Top Map Banner -->
+    <div style="position: relative; height: 180px; border-radius: var(--radius-md); overflow: hidden; margin-bottom: 1.5rem; background: #000;">
+      <img src="${sanitizeHTML(map.thumbnail_url)}" alt="${sanitizeHTML(map.name)}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.75;">
+      <div style="position: absolute; inset: 0; background: linear-gradient(0deg, rgba(6,8,13,0.95) 0%, rgba(6,8,13,0.3) 100%);"></div>
+      <div style="position: absolute; bottom: 16px; left: 20px; right: 20px; z-index: 2;">
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.3rem;">
+          <span class="badge" style="background: rgba(0,229,255,0.2); color: var(--accent-cyan);">${sanitizeHTML(map.game)}</span>
+          <span class="badge" style="background: rgba(255,255,255,0.15); color: #fff;">${sanitizeHTML(map.difficulty)}</span>
+          <span class="badge" style="background: rgba(16,185,129,0.2); color: #10b981;">${map.teams_count} Teams • Size ${map.team_size}</span>
+        </div>
+        <h2 style="font-size: 1.6rem; font-weight: 900; color: #fff; margin: 0;">${sanitizeHTML(map.name)}</h2>
+        <p style="font-size: 0.84rem; color: var(--accent-cyan); margin-top: 0.2rem;">${sanitizeHTML(map.theme)}</p>
+      </div>
+    </div>
+
+    <!-- Layout Schematic Box -->
+    <div style="background: var(--bg-surface-elevated); border-left: 4px solid var(--accent-cyan); border-radius: 0 var(--radius-md) var(--radius-md) 0; padding: 1.25rem; margin-bottom: 1.5rem;">
+      <h4 style="font-size: 0.96rem; font-weight: 800; color: #fff; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.5rem;">
+        <span>📐 Architecture & Layout Schematic</span>
+      </h4>
+      <p style="font-size: 0.88rem; color: var(--text-main); line-height: 1.6; margin: 0;">
+        ${sanitizeHTML(map.layout_schematic)}
+      </p>
+    </div>
+
+    <!-- 3-Column Tactical Playbook -->
+    <div class="tactics-grid">
+      <div class="tactics-card">
+        <h4 style="color: var(--accent-cyan);">
+          <span>🚀 Opening Void Rush</span>
+        </h4>
+        <p>${sanitizeHTML(map.tactics_rush)}</p>
+      </div>
+
+      <div class="tactics-card">
+        <h4 style="color: #10b981;">
+          <span>🛡️ Base & Defense Meta</span>
+        </h4>
+        <p>${sanitizeHTML(map.tactics_defense)}</p>
+      </div>
+
+      <div class="tactics-card">
+        <h4 style="color: #fbbf24;">
+          <span>👑 Mid Control & Dominance</span>
+        </h4>
+        <p>${sanitizeHTML(map.tactics_mid_control)}</p>
+      </div>
+    </div>
+
+    <!-- Generator Placements (EggWars) -->
+    ${genBreakdownHTML}
+
+    <!-- Void Bridging Matrix -->
+    <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; margin-bottom: 1.5rem;">
+      <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface);">
+        <h4 style="font-size: 1rem; font-weight: 800; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+          <span>📏 Void Bridging Distance Matrix</span>
+          <span style="font-size: 0.75rem; color: var(--accent-cyan); font-weight: 600;">5.6 bps Bedrock Sprint vs 1.6 bps Sneak</span>
+        </h4>
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="table" style="margin-bottom: 0;">
+          <thead>
+            <tr>
+              <th>Target Island</th>
+              <th>Distance</th>
+              <th>Sprint Jump-Bridge</th>
+              <th>Sneak-Bridge</th>
+              <th>Blocks (Stacks)</th>
+              <th>Danger</th>
+              <th>Tactical Recommendation</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${bridgingTableRows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  openModal(modal);
+}
+
+function initGeneratorCalculator() {
+  const typeSelect = document.getElementById('calc-gen-type');
+  const tierSelect = document.getElementById('calc-gen-tier');
+  const countSelect = document.getElementById('calc-gen-count');
+  const durationSlider = document.getElementById('calc-gen-duration');
+
+  const triggers = [typeSelect, tierSelect, countSelect, durationSlider];
+  triggers.forEach(el => {
+    if (el) {
+      el.addEventListener('input', () => updateGeneratorCalculator());
+      el.addEventListener('change', () => updateGeneratorCalculator());
+    }
+  });
+}
+
+function updateGeneratorCalculator() {
+  if (!state.mapsGuide.generators) return;
+
+  const typeEl = document.getElementById('calc-gen-type');
+  const tierEl = document.getElementById('calc-gen-tier');
+  const countEl = document.getElementById('calc-gen-count');
+  const durationEl = document.getElementById('calc-gen-duration');
+
+  if (!typeEl || !tierEl || !countEl || !durationEl) return;
+
+  const type = typeEl.value; // 'diamond', 'iron', 'gold'
+  const tier = parseInt(tierEl.value); // 1, 2, 3, 4
+  const count = parseInt(countEl.value); // 1, 2, 4
+  const duration = parseInt(durationEl.value); // 1 to 15 mins
+
+  // Update duration badge
+  const durationBadge = document.getElementById('calc-duration-badge');
+  if (durationBadge) {
+    durationBadge.innerText = `${duration} Minute${duration > 1 ? 's' : ''}`;
+  }
+
+  const durationSub = document.getElementById('calc-kpi-duration-sub');
+  if (durationSub) {
+    durationSub.innerText = `Over ${duration} minute duration`;
+  }
+
+  const genConfig = state.mapsGuide.generators[type];
+  if (!genConfig || !genConfig.tiers[tier - 1]) return;
+
+  const tierData = genConfig.tiers[tier - 1];
+  const ratePerMinPerGen = tierData.rate_per_min;
+  const combinedRate = ratePerMinPerGen * count;
+  const totalYield = Math.floor(combinedRate * duration);
+  const intervalSec = tierData.interval_sec;
+
+  // Update Rate KPI
+  const rateKpi = document.getElementById('calc-kpi-rate');
+  if (rateKpi) {
+    rateKpi.innerText = `${combinedRate.toFixed(1)} / min`;
+  }
+
+  // Update Interval KPI
+  const intervalKpi = document.getElementById('calc-kpi-interval');
+  if (intervalKpi) {
+    intervalKpi.innerText = `1 item every ${intervalSec}s (per gen)`;
+  }
+
+  // Update Total Yield KPI
+  const totalKpi = document.getElementById('calc-kpi-total');
+  if (totalKpi) {
+    totalKpi.innerText = `${formatNumber(totalYield)} ${genConfig.material}s`;
+  }
+
+  // Update Upgrade Cost KPI
+  const costKpi = document.getElementById('calc-kpi-cost');
+  const costTypeEl = document.getElementById('calc-kpi-cost-type');
+  if (costKpi) {
+    costKpi.innerText = tierData.upgrade_cost;
+  }
+  if (costTypeEl) {
+    costTypeEl.innerText = `To upgrade to Tier ${tier}`;
+  }
+
+  // Calculate Breakeven ROI
+  const roiKpi = document.getElementById('calc-kpi-roi');
+  const roiSub = document.getElementById('calc-kpi-roi-sub');
+  if (roiKpi && roiSub) {
+    if (tierData.cost_amount === 0) {
+      roiKpi.innerText = '0.0 Min';
+      roiSub.innerText = 'Free / default base spawn';
+    } else {
+      // Calculate minutes to generate the invested resource
+      if (tierData.cost_type === 'Diamond' && type === 'diamond') {
+        const paybackMinutes = tierData.cost_amount / combinedRate;
+        const mins = paybackMinutes.toFixed(1);
+        roiKpi.innerText = `${mins} Min`;
+        roiSub.innerText = `Payback time for ${tierData.cost_amount} diamonds`;
+      } else {
+        roiKpi.innerText = 'Fast ROI';
+        roiSub.innerText = `Invest ${tierData.cost_amount} ${tierData.cost_type}`;
+      }
+    }
+  }
+
+  // Dynamic Strategy Tip
+  const tipEl = document.getElementById('calc-tactical-tip');
+  if (tipEl) {
+    let tipText = '';
+    if (type === 'diamond') {
+      if (tier === 4 && count === 4) {
+        tipText = `Controlling 4 mid Diamond generators at Tier 4 produces a staggering 64 diamonds per minute! In just 45 seconds, your team can purchase full Obsidian cages, full enchanted diamond gear, and multiple ender pearls for an unstoppable endgame push.`;
+      } else if (tier >= 3) {
+        tipText = `Controlling ${count} Diamond gen(s) at Tier ${tier} yields ${combinedRate.toFixed(0)} diamonds per minute. At this rate, an Obsidian egg shell (20 diamonds) is fully funded in just ${(20 / combinedRate).toFixed(1)} minutes!`;
+      } else {
+        tipText = `Even a single Tier 2 Diamond generator doubles resource velocity from 2 to 4 diamonds/min. Upgrade early on sub-islands before contesting mid.`;
+      }
+    } else if (type === 'iron') {
+      tipText = `Iron Tier ${tier} produces ${combinedRate.toFixed(0)} iron per minute. Upgrade to Tier 2 (20 iron) on your very first spawn tick to double block generation speed for your void bridger.`;
+    } else {
+      tipText = `Gold Generator Tier ${tier} delivers ${combinedRate.toFixed(0)} gold/min. Crucial for purchasing Golden Apples (2 gold each) and chainmail armor in the first 3 minutes of combat.`;
+    }
+
+    tipEl.innerHTML = `💡 <strong>Bedrock Strategy Tip:</strong> ${tipText}`;
+  }
+}
+
+function renderGeneratorReference() {
+  const container = document.getElementById('generator-reference-cards');
+  if (!container || !state.mapsGuide.generators) return;
+
+  const gens = state.mapsGuide.generators;
+  const keys = ['iron', 'gold', 'diamond'];
+
+  container.innerHTML = keys.map(k => {
+    const g = gens[k];
+    const rows = g.tiers.map(t => `
+      <tr>
+        <td style="font-weight: 700; color: #fff;">Tier ${t.tier}</td>
+        <td style="color: var(--accent-cyan); font-weight: 700;">${t.interval_sec}s</td>
+        <td style="color: #10b981; font-weight: 700;">${t.rate_per_min.toFixed(1)} /min</td>
+        <td style="color: #fbbf24;">${sanitizeHTML(t.upgrade_cost)}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+        <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); display: flex; align-items: center; justify-content: space-between;">
+          <h4 style="font-size: 1.05rem; font-weight: 800; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+            <span>${g.icon} ${sanitizeHTML(g.name)}</span>
+          </h4>
+          <span class="badge" style="background: rgba(255,255,255,0.08); color: ${g.badge_color};">
+            ${sanitizeHTML(g.material)}
+          </span>
+        </div>
+        <div style="padding: 0.5rem 0;">
+          <table class="gen-spec-table">
+            <thead>
+              <tr>
+                <th>Tier</th>
+                <th>Interval</th>
+                <th>Spawn Rate</th>
+                <th>Upgrade Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderBridgingBenchmarks() {
+  const tbody = document.getElementById('bridging-benchmarks-tbody');
+  if (!tbody || !state.mapsGuide.bridging) return;
+
+  const filter = state.mapsGuide.selectedBridgeFilter;
+  const maxDist = state.mapsGuide.maxBridgeDistance;
+
+  const benchmarks = state.mapsGuide.bridging.benchmarks.filter(b => {
+    if (filter !== 'all' && b.game.toLowerCase() !== filter.toLowerCase()) return false;
+    if (b.distance_blocks > maxDist) return false;
+    return true;
+  });
+
+  if (benchmarks.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+          No void bridging benchmarks match this distance threshold (${maxDist} blocks).
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = benchmarks.map(b => {
+    const dangerClass = `danger-${b.danger_level.toLowerCase()}`;
+    const isEgg = b.game === 'EggWars';
+    const gameColor = isEgg ? 'var(--accent-cyan)' : 'var(--accent-emerald)';
+
+    return `
+      <tr>
+        <td>
+          <strong style="color: #fff;">${sanitizeHTML(b.map_name)}</strong>
+          <span style="font-size: 0.72rem; color: ${gameColor}; margin-left: 6px; font-weight: 700;">${sanitizeHTML(b.game)}</span>
+        </td>
+        <td style="font-weight: 600; color: #cbd5e1;">${sanitizeHTML(b.target)}</td>
+        <td>
+          <span style="font-size: 1.05rem; font-weight: 900; color: var(--accent-cyan);">${b.distance_blocks}</span>
+          <span style="font-size: 0.75rem; color: var(--text-subtle);"> blk</span>
+        </td>
+        <td style="color: #10b981; font-weight: 800; font-size: 0.95rem;">
+          ⚡ ${b.jump_bridge_sec}s
+        </td>
+        <td style="color: var(--text-muted); font-size: 0.82rem;">
+          🚶 ${b.sneak_bridge_sec}s
+        </td>
+        <td style="font-size: 0.82rem; color: #cbd5e1;">
+          ${b.blocks_needed} <span style="color: var(--text-subtle);">(${(b.blocks_needed / 64).toFixed(2)} stk)</span>
+        </td>
+        <td>
+          <span class="danger-badge ${dangerClass}">${sanitizeHTML(b.danger_level)}</span>
+        </td>
+        <td style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; max-width: 260px;">
+          ${sanitizeHTML(b.tactical_note)}
+        </td>
+      </tr>
+    `;
+  }).join('');
 }

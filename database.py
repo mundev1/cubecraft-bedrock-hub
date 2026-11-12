@@ -162,6 +162,7 @@ def init_db(reset=False):
         cursor.execute('DROP TABLE IF EXISTS clips')
         cursor.execute('DROP TABLE IF EXISTS encounters')
         cursor.execute('DROP TABLE IF EXISTS server_status_logs')
+        cursor.execute('DROP TABLE IF EXISTS maps_strategy')
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS players (
@@ -264,6 +265,27 @@ def init_db(reset=False):
         hour_of_day INTEGER
     )''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_server_status_timestamp ON server_status_logs(timestamp)')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS maps_strategy (
+        map_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        game TEXT NOT NULL,
+        mode_variant TEXT NOT NULL,
+        theme TEXT NOT NULL,
+        difficulty TEXT NOT NULL,
+        teams_count INTEGER NOT NULL,
+        team_size INTEGER NOT NULL,
+        thumbnail_url TEXT,
+        layout_schematic TEXT,
+        description TEXT,
+        tactics_rush TEXT,
+        tactics_defense TEXT,
+        tactics_mid_control TEXT,
+        generator_breakdown TEXT,
+        bridging_distances TEXT
+    )''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_maps_strategy_game ON maps_strategy(game)')
 
     conn.commit()
     conn.close()
@@ -876,6 +898,308 @@ def get_server_tracker_stats():
         "best_for_grinding": "04:00 - 08:00 UTC (Less lobby competition, smoother win streaks)"
     }
 
+# ==========================================
+# Official Bedrock Mode & Maps Strategy Guide
+# ==========================================
+
+def seed_maps_strategy():
+    """Seeds authentic CubeCraft Bedrock maps with tactical blueprints, generator specs, and bridging benchmarks."""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    maps_data = [
+        {
+            "map_id": "eggwars_tea_party",
+            "name": "Tea Party",
+            "game": "EggWars",
+            "mode_variant": "Teams of 2 & Solo",
+            "theme": "Confectionery Wonderland & Giant Teacups",
+            "difficulty": "Beginner / Intermediate",
+            "teams_count": 8,
+            "team_size": 2,
+            "thumbnail_url": "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop&q=80",
+            "layout_schematic": "Circular 8-island ring around 4 floating Macaron diamond islands, surrounding a massive central 3-tier Birthday Cake.",
+            "description": "One of CubeCraft's most iconic and beloved EggWars maps. Fast-paced ring layout where sub-islands are positioned closely to starter bases, enabling explosive early diamond rushes.",
+            "tactics_rush": "Neighbor base is 24 blocks away. 32 sandstone blocks will cover the void in 4.3 seconds with Bedrock sprint-bridging. Rush before they craft iron armor.",
+            "tactics_defense": "Wrap egg with End Stone (6 Gold) immediately. As soon as you mine 20 diamonds from cookie island, apply Obsidian and coat with stained glass to block TNT cannons.",
+            "tactics_mid_control": "Secure your adjacent Diamond Sub-Island (16 blocks) before venturing to the Central Mega Cake (32 blocks). Control the top cake tier with punch bow.",
+            "generator_breakdown": json.dumps({
+                "starter_island": [
+                    {"type": "Iron", "count": 1, "start_tier": 1, "max_tier": 4, "location": "Next to spawn egg"},
+                    {"type": "Gold", "count": 1, "start_tier": 0, "max_tier": 4, "location": "Base cellar (5 Dia to unlock)"}
+                ],
+                "sub_islands": [
+                    {"name": "Macaron Island", "count": 4, "generators": [{"type": "Diamond", "tier": 1, "count": 1, "rate_per_min": 2.0}]}
+                ],
+                "middle_island": [
+                    {"name": "Central Mega Cake", "generators": [{"type": "Diamond", "tier": 1, "count": 4, "rate_per_min": 8.0}]}
+                ]
+            }),
+            "bridging_distances": json.dumps([
+                {"target": "Neighbor Base", "distance_blocks": 24, "jump_bridge_sec": 4.3, "sneak_bridge_sec": 15.0, "blocks_needed": 24, "danger_level": "Low", "tactical_note": "Early rush target before gold gear."},
+                {"target": "Diamond Macaron Island", "distance_blocks": 16, "jump_bridge_sec": 2.9, "sneak_bridge_sec": 10.0, "blocks_needed": 16, "danger_level": "Low", "tactical_note": "Fastest route to first 10-20 diamonds."},
+                {"target": "Central Mega Cake (Mid)", "distance_blocks": 32, "jump_bridge_sec": 5.7, "sneak_bridge_sec": 20.0, "blocks_needed": 32, "danger_level": "Medium", "tactical_note": "Direct bridge to center; exposed to crossfire from adjacent bases."}
+            ])
+        },
+        {
+            "map_id": "eggwars_dwarven",
+            "name": "Dwarven",
+            "game": "EggWars",
+            "mode_variant": "Teams of 4",
+            "theme": "Subterranean Fortress & Molten Lava Forges",
+            "difficulty": "Advanced / Competitive",
+            "teams_count": 4,
+            "team_size": 4,
+            "thumbnail_url": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
+            "layout_schematic": "4 large underground dwarven bastions overlooking a deep fiery cavern with high railway arches and a grand Central Smelting Forge.",
+            "description": "A macro-strategy powerhouse map built for 4v4 squad coordination. Extended bridging gaps and deep void falls require dedicated bridging roles and defense anchors.",
+            "tactics_rush": "Neighboring base is 28 blocks across lava. Because each base starts with 2 Iron generators, defenders gear up quickly. Coordinate a double-bridge rush with shields.",
+            "tactics_defense": "Prioritize multi-layer egg fortification: 1 layer obsidian (20 diamonds from mine shaft) wrapped in glass + wooden slabs to counter both pickaxe and explosive fireballs.",
+            "tactics_mid_control": "The Central Forge features 4 Diamond Tier 2 generators producing 16 diamonds/minute total! Locking down the forge stairway locks down the game.",
+            "generator_breakdown": json.dumps({
+                "starter_island": [
+                    {"type": "Iron", "count": 2, "start_tier": 1, "max_tier": 4, "location": "Twin forge anvils in base"},
+                    {"type": "Gold", "count": 1, "start_tier": 1, "max_tier": 4, "location": "Inner smelter vault"}
+                ],
+                "sub_islands": [
+                    {"name": "Crystal Mine Shaft", "count": 4, "generators": [{"type": "Diamond", "tier": 1, "count": 1, "rate_per_min": 2.0}]}
+                ],
+                "middle_island": [
+                    {"name": "Great Central Forge", "generators": [{"type": "Diamond", "tier": 2, "count": 4, "rate_per_min": 16.0}]}
+                ]
+            }),
+            "bridging_distances": json.dumps([
+                {"target": "Neighbor Dwarf Bastion", "distance_blocks": 28, "jump_bridge_sec": 5.0, "sneak_bridge_sec": 17.5, "blocks_needed": 28, "danger_level": "Medium", "tactical_note": "Bridge over lava pool; knockbacks are lethal."},
+                {"target": "Diamond Mine Shaft", "distance_blocks": 18, "jump_bridge_sec": 3.2, "sneak_bridge_sec": 11.3, "blocks_needed": 18, "danger_level": "Low", "tactical_note": "Safest route for solo miner gathering early upgrades."},
+                {"target": "Great Central Forge (Mid)", "distance_blocks": 42, "jump_bridge_sec": 7.5, "sneak_bridge_sec": 26.3, "blocks_needed": 42, "danger_level": "High", "tactical_note": "Long bridge exposed to long-range bow snipers from high forge rafters."}
+            ])
+        },
+        {
+            "map_id": "eggwars_atlantis",
+            "name": "Atlantis",
+            "game": "EggWars",
+            "mode_variant": "Teams of 2 & Solo",
+            "theme": "Deep Sunken Prismarine Temple & Coral Reefs",
+            "difficulty": "Intermediate",
+            "teams_count": 8,
+            "team_size": 2,
+            "thumbnail_url": "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=600&auto=format&fit=crop&q=80",
+            "layout_schematic": "Aquatic ring with prismarine pillars, underwater coral outposts, and a towering sunken Trident Sanctuary at the center.",
+            "description": "A visually stunning aquatic battlefield. The generous distances encourage pearl throwing, water defense physics, and vertical aerial positioning.",
+            "tactics_rush": "Neighbor rush is 30 blocks. High-tier players usually bridge 20 blocks to the Coral Diamond island first, secure Tier 2 iron weapons, and then flank the neighbor.",
+            "tactics_defense": "Water flow egg defense is king here! Deploy water sources over Obsidian to completely nullify Bedrock TNT blast damage and prevent block breaking.",
+            "tactics_mid_control": "The Trident Sanctuary features elevated perimeter arches. A marksman with Power III bow can deny all access to the 4 central diamond generators.",
+            "generator_breakdown": json.dumps({
+                "starter_island": [
+                    {"type": "Iron", "count": 1, "start_tier": 1, "max_tier": 4, "location": "Prismarine courtyard"},
+                    {"type": "Gold", "count": 1, "start_tier": 0, "max_tier": 4, "location": "Base grotto (5 Dia to unlock)"}
+                ],
+                "sub_islands": [
+                    {"name": "Coral Reef Outpost", "count": 4, "generators": [{"type": "Diamond", "tier": 1, "count": 1, "rate_per_min": 2.0}]}
+                ],
+                "middle_island": [
+                    {"name": "Trident Sanctuary", "generators": [{"type": "Diamond", "tier": 1, "count": 4, "rate_per_min": 8.0}]}
+                ]
+            }),
+            "bridging_distances": json.dumps([
+                {"target": "Neighbor Coral Base", "distance_blocks": 30, "jump_bridge_sec": 5.4, "sneak_bridge_sec": 18.8, "blocks_needed": 30, "danger_level": "Medium", "tactical_note": "Flank via sub-island rather than direct line."},
+                {"target": "Coral Reef Outpost", "distance_blocks": 20, "jump_bridge_sec": 3.6, "sneak_bridge_sec": 12.5, "blocks_needed": 20, "danger_level": "Low", "tactical_note": "Primary opening move: 20 blocks for 2 dia/min."},
+                {"target": "Trident Sanctuary (Mid)", "distance_blocks": 36, "jump_bridge_sec": 6.4, "sneak_bridge_sec": 22.5, "blocks_needed": 36, "danger_level": "High", "tactical_note": "Bridge under temple arches to shield against overhead arrows."}
+            ])
+        },
+        {
+            "map_id": "skywars_trees",
+            "name": "Trees",
+            "game": "SkyWars",
+            "mode_variant": "Solo & Duos",
+            "theme": "Enchanted Redwood Canopies & Giant Forest",
+            "difficulty": "Fast-Paced",
+            "teams_count": 12,
+            "team_size": 1,
+            "thumbnail_url": "https://images.unsplash.com/photo-1448375240586-882707db888b?w=600&auto=format&fit=crop&q=80",
+            "layout_schematic": "12 hollow redwood tree trunks surrounding a majestic sprawling Mother Tree with vine ladders and tiered branches.",
+            "description": "CubeCraft Bedrock's timeless SkyWars classic. Rapid vertical looting and dense canopy foliage provide ambush spots and quick 18-block neighbor battles.",
+            "tactics_rush": "Neighbor tree is only 18 blocks away. Loot the top canopy chest immediately for your first weapon and 16 blocks, then sprint jump-bridge over in 3.2s before neighbor finishes looting.",
+            "tactics_defense": "Stay concealed within leaf blocks while opening starter chests to prevent projectile knockback off the tree ledge.",
+            "tactics_mid_control": "Bridge 26 blocks to the Mother Tree roots. 6 central chests provide enchanted diamond armor, Golden Apples, and knockback slimeballs.",
+            "generator_breakdown": json.dumps({
+                "starter_island": [
+                    {"type": "Chest Loot", "count": 3, "loot_tier": "Basic/Normal", "location": "1 at canopy, 2 in hollow trunk"}
+                ],
+                "middle_island": [
+                    {"name": "Mother Tree Roots & Branch", "generators": [{"type": "Chest Loot", "count": 6, "loot_tier": "Overpowered/Diamond", "location": "Center heart of tree"}]}
+                ]
+            }),
+            "bridging_distances": json.dumps([
+                {"target": "Neighbor Tree Canopy", "distance_blocks": 18, "jump_bridge_sec": 3.2, "sneak_bridge_sec": 11.3, "blocks_needed": 18, "danger_level": "High", "tactical_note": "Lightning-fast neighbor rush. Kill them while they are in chest inventory."},
+                {"target": "Mother Tree (Mid)", "distance_blocks": 26, "jump_bridge_sec": 4.6, "sneak_bridge_sec": 16.3, "blocks_needed": 26, "danger_level": "High", "tactical_note": "Secure center chests before perimeter fighters arrive."}
+            ])
+        },
+        {
+            "map_id": "skywars_rainbow",
+            "name": "Rainbow",
+            "game": "SkyWars",
+            "mode_variant": "Solo",
+            "theme": "Fluffy Cloud Havens & Arching Rainbow Ribbons",
+            "difficulty": "Extreme Speed",
+            "teams_count": 12,
+            "team_size": 1,
+            "thumbnail_url": "https://images.unsplash.com/photo-1508615039623-a25605d2b022?w=600&auto=format&fit=crop&q=80",
+            "layout_schematic": "12 fluffy cloud spawn isles linked by curving rainbow tracks to an oversized golden pot cloud at center.",
+            "description": "The fastest void-rush map in CubeCraft Bedrock SkyWars. An ultra-compact 16-block neighbor gap means combat begins within 3 seconds of game start.",
+            "tactics_rush": "Ultra-fast 16-block rush! With Bedrock sprint-bridging, you cross the void in 2.9 seconds. Grab the first sword and bridge immediately.",
+            "tactics_defense": "Place wool barrier blocks facing both adjacent cloud islands before checking your secondary chests.",
+            "tactics_mid_control": "The Pot of Gold at center (22 blocks) contains 8 stacked chests with Punch bows, Ender Pearls, and Diamond Chestplates.",
+            "generator_breakdown": json.dumps({
+                "starter_island": [
+                    {"type": "Chest Loot", "count": 3, "loot_tier": "Basic/Normal", "location": "Cloud platform edges"}
+                ],
+                "middle_island": [
+                    {"name": "Pot of Gold Cloud", "generators": [{"type": "Chest Loot", "count": 8, "loot_tier": "Overpowered/Diamond", "location": "Around and inside the golden pot"}]}
+                ]
+            }),
+            "bridging_distances": json.dumps([
+                {"target": "Neighbor Cloud Isle", "distance_blocks": 16, "jump_bridge_sec": 2.9, "sneak_bridge_sec": 10.0, "blocks_needed": 16, "danger_level": "Extreme", "tactical_note": "Fastest rush in Bedrock. Game can be won or lost in first 5 seconds."},
+                {"target": "Pot of Gold (Mid)", "distance_blocks": 22, "jump_bridge_sec": 3.9, "sneak_bridge_sec": 13.8, "blocks_needed": 22, "danger_level": "High", "tactical_note": "Reach pot of gold to gain Punch I bow and lock down all rainbow paths."}
+            ])
+        }
+    ]
+
+    for m in maps_data:
+        cursor.execute('''
+        INSERT OR REPLACE INTO maps_strategy (
+            map_id, name, game, mode_variant, theme, difficulty,
+            teams_count, team_size, thumbnail_url, layout_schematic,
+            description, tactics_rush, tactics_defense, tactics_mid_control,
+            generator_breakdown, bridging_distances
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            m['map_id'], m['name'], m['game'], m['mode_variant'], m['theme'], m['difficulty'],
+            m['teams_count'], m['team_size'], m['thumbnail_url'], m['layout_schematic'],
+            m['description'], m['tactics_rush'], m['tactics_defense'], m['tactics_mid_control'],
+            m['generator_breakdown'], m['bridging_distances']
+        ))
+
+    conn.commit()
+    conn.close()
+    print(f"Seeded {len(maps_data)} official Bedrock map blueprints & strategy profiles.")
+
+def get_all_maps_strategy(game=None):
+    """Retrieves all map blueprints, optionally filtered by game (EggWars or SkyWars)."""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    if game and game.lower() != 'all':
+        cursor.execute('SELECT * FROM maps_strategy WHERE LOWER(game) = LOWER(?) ORDER BY name ASC', (game,))
+    else:
+        cursor.execute('SELECT * FROM maps_strategy ORDER BY game ASC, name ASC')
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    result = []
+    for r in rows:
+        item = dict(r)
+        if item.get('generator_breakdown'):
+            item['generator_breakdown'] = json.loads(item['generator_breakdown'])
+        if item.get('bridging_distances'):
+            item['bridging_distances'] = json.loads(item['bridging_distances'])
+        result.append(item)
+
+    return result
+
+def get_map_strategy_detail(map_id):
+    """Retrieves complete strategy blueprint for a specific map."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM maps_strategy WHERE map_id = ?', (map_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    item = dict(row)
+    if item.get('generator_breakdown'):
+        item['generator_breakdown'] = json.loads(item['generator_breakdown'])
+    if item.get('bridging_distances'):
+        item['bridging_distances'] = json.loads(item['bridging_distances'])
+
+    return item
+
+def get_generator_tiers_data():
+    """Official CubeCraft Bedrock generator upgrade costs, intervals, and output rates."""
+    return {
+        "iron": {
+            "name": "Iron Generator",
+            "material": "Iron Ingot",
+            "icon": "⛏️",
+            "badge_color": "#e0e7ff",
+            "tiers": [
+                {"tier": 1, "interval_sec": 2.0, "rate_per_min": 30.0, "upgrade_cost": "Free (Base default)", "cost_type": "None", "cost_amount": 0},
+                {"tier": 2, "interval_sec": 1.0, "rate_per_min": 60.0, "upgrade_cost": "20 Iron", "cost_type": "Iron", "cost_amount": 20},
+                {"tier": 3, "interval_sec": 0.5, "rate_per_min": 120.0, "upgrade_cost": "20 Gold", "cost_type": "Gold", "cost_amount": 20},
+                {"tier": 4, "interval_sec": 0.25, "rate_per_min": 240.0, "upgrade_cost": "5 Diamonds", "cost_type": "Diamond", "cost_amount": 5}
+            ]
+        },
+        "gold": {
+            "name": "Gold Generator",
+            "material": "Gold Ingot",
+            "icon": "🪙",
+            "badge_color": "#fbbf24",
+            "tiers": [
+                {"tier": 1, "interval_sec": 4.0, "rate_per_min": 15.0, "upgrade_cost": "5 Diamonds (Unlock)", "cost_type": "Diamond", "cost_amount": 5},
+                {"tier": 2, "interval_sec": 2.0, "rate_per_min": 30.0, "upgrade_cost": "10 Diamonds", "cost_type": "Diamond", "cost_amount": 10},
+                {"tier": 3, "interval_sec": 1.0, "rate_per_min": 60.0, "upgrade_cost": "20 Diamonds", "cost_type": "Diamond", "cost_amount": 20},
+                {"tier": 4, "interval_sec": 0.5, "rate_per_min": 120.0, "upgrade_cost": "40 Diamonds", "cost_type": "Diamond", "cost_amount": 40}
+            ]
+        },
+        "diamond": {
+            "name": "Diamond Generator",
+            "material": "Diamond",
+            "icon": "💎",
+            "badge_color": "#00e5ff",
+            "tiers": [
+                {"tier": 1, "interval_sec": 30.0, "rate_per_min": 2.0, "upgrade_cost": "Free at Mid / 10 Dia at Base", "cost_type": "Diamond", "cost_amount": 10},
+                {"tier": 2, "interval_sec": 15.0, "rate_per_min": 4.0, "upgrade_cost": "10 Diamonds", "cost_type": "Diamond", "cost_amount": 10},
+                {"tier": 3, "interval_sec": 7.5, "rate_per_min": 8.0, "upgrade_cost": "20 Diamonds", "cost_type": "Diamond", "cost_amount": 20},
+                {"tier": 4, "interval_sec": 3.75, "rate_per_min": 16.0, "upgrade_cost": "40 Diamonds", "cost_type": "Diamond", "cost_amount": 40}
+            ]
+        }
+    }
+
+def get_bridging_benchmarks_data():
+    """Void bridging distances, timings, and block requirements across all supported maps."""
+    maps = get_all_maps_strategy()
+    benchmarks = []
+    for m in maps:
+        for b in m.get('bridging_distances', []):
+            benchmarks.append({
+                "map_id": m['map_id'],
+                "map_name": m['name'],
+                "game": m['game'],
+                "target": b['target'],
+                "distance_blocks": b['distance_blocks'],
+                "jump_bridge_sec": b['jump_bridge_sec'],
+                "sneak_bridge_sec": b['sneak_bridge_sec'],
+                "blocks_needed": b['blocks_needed'],
+                "danger_level": b['danger_level'],
+                "tactical_note": b['tactical_note']
+            })
+
+    # Sort benchmarks by distance ascending
+    benchmarks.sort(key=lambda x: x['distance_blocks'])
+
+    return {
+        "mechanics": {
+            "jump_bridge_speed_bps": 5.6,
+            "sneak_bridge_speed_bps": 1.6,
+            "block_stack_size": 64,
+            "description": "Minecraft Bedrock Edition allows forward jump-bridging without crouching, achieving speeds of ~5.6 blocks per second. Standard sneak-bridging moves backwards at ~1.6 blocks per second."
+        },
+        "benchmarks": benchmarks
+    }
+
 if __name__ == '__main__':
     init_db(reset=True)
     sync_cubecraft_leaderboards()
@@ -883,4 +1207,5 @@ if __name__ == '__main__':
     sync_cubecraft_marketplace()
     seed_clips()
     init_server_tracker(6000)
+    seed_maps_strategy()
     print("Database re-initialized with 100% authentic CubeCraft Bedrock API data & analytics engine!")

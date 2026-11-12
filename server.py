@@ -18,7 +18,10 @@ from database import (
     parse_leaderboard_info, parse_minecraft_rank,
     init_server_tracker, log_server_status,
     get_cross_mode_masters, get_competitiveness_scores,
-    get_rank_distribution, get_server_tracker_stats
+    get_rank_distribution, get_server_tracker_stats,
+    seed_maps_strategy, get_all_maps_strategy,
+    get_map_strategy_detail, get_generator_tiers_data,
+    get_bridging_benchmarks_data
 )
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
@@ -28,6 +31,7 @@ init_db()
 seed_custom_players()
 seed_clips()
 init_server_tracker(6000)
+seed_maps_strategy()
 
 # Ensure marketplace has authentic data
 conn_init = get_db()
@@ -856,6 +860,63 @@ def report_encounter(encounter_id):
     conn.commit()
     conn.close()
     return jsonify({"success": True, "message": "Encounter reported for community review."})
+
+# ----------------------------------------------------
+# Official Bedrock Mode & Maps Strategy Guide API
+# ----------------------------------------------------
+
+@app.route('/api/strategy/maps', methods=['GET'])
+def get_strategy_maps():
+    """Returns authentic Bedrock map blueprints, optionally filtered by ?game=EggWars|SkyWars."""
+    game = request.args.get('game', None)
+    maps = get_all_maps_strategy(game)
+    return jsonify({
+        "success": True,
+        "count": len(maps),
+        "maps": maps
+    })
+
+@app.route('/api/strategy/maps/<map_id>', methods=['GET'])
+def get_strategy_map_detail(map_id):
+    """Returns complete tactical blueprint for a specific map."""
+    map_data = get_map_strategy_detail(map_id)
+    if not map_data:
+        return jsonify({"success": False, "error": f"Map '{map_id}' not found"}), 404
+    return jsonify({
+        "success": True,
+        "map": map_data
+    })
+
+@app.route('/api/strategy/generators', methods=['GET'])
+def get_strategy_generators():
+    """Returns official CubeCraft Bedrock generator upgrade costs and timer parameters."""
+    gens = get_generator_tiers_data()
+    return jsonify({
+        "success": True,
+        "generators": gens
+    })
+
+@app.route('/api/strategy/bridging-benchmarks', methods=['GET'])
+def get_strategy_bridging_benchmarks():
+    """Returns void bridging distances, sprint jump-bridging timings, and block requirements."""
+    benchmarks_data = get_bridging_benchmarks_data()
+    return jsonify({
+        "success": True,
+        **benchmarks_data
+    })
+
+@app.route('/api/strategy/overview', methods=['GET'])
+def get_strategy_overview():
+    """Bundles maps, generator tiers, and bridging benchmarks for unified UI initialization."""
+    maps = get_all_maps_strategy()
+    gens = get_generator_tiers_data()
+    benchmarks = get_bridging_benchmarks_data()
+    return jsonify({
+        "success": True,
+        "maps": maps,
+        "generators": gens,
+        "bridging": benchmarks
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5055))
