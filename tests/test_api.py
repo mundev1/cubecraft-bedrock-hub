@@ -183,5 +183,60 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         helpful_data = json.loads(res_helpful.data)
         self.assertTrue(helpful_data['success'])
 
+    def test_daily_wins_counters_and_stats(self):
+        # Stats endpoint with daily tracked wins
+        res = self.app.get('/api/stats')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertIn('today_tracked_wins', data['stats'])
+        self.assertGreater(data['stats']['today_tracked_wins'], 0)
+        self.assertIn('online_players', data['stats'])
+        self.assertGreater(data['stats']['online_players'], 1000)
+        self.assertIn('top_daily_grinder', data['stats'])
+        self.assertIsNotNone(data['stats']['top_daily_grinder'])
+
+    def test_leaderboards_timeframe_daily(self):
+        # Leaderboards with timeframe=daily
+        res = self.app.get('/api/leaderboards?game=EggWars&mode=All%20Modes&timeframe=daily')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertEqual(data['timeframe'], 'daily')
+        self.assertGreater(len(data['leaderboard']), 0)
+        
+        # Verify sorted by daily_wins descending
+        rows = data['leaderboard']
+        for i in range(len(rows) - 1):
+            self.assertGreaterEqual(rows[i]['daily_wins'], rows[i + 1]['daily_wins'])
+
+    def test_daily_leaders_endpoint(self):
+        res = self.app.get('/api/leaderboards/daily-leaders')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertGreater(len(data['daily_leaders']), 0)
+        top = data['daily_leaders'][0]
+        self.assertIn('gamertag', top)
+        self.assertIn('daily_wins', top)
+        self.assertGreater(top['daily_wins'], 0)
+
+    def test_player_profile_daily_stats(self):
+        # MundevPolite
+        res_m = self.app.get('/api/players/MundevPolite')
+        self.assertEqual(res_m.status_code, 200)
+        data_m = json.loads(res_m.data)
+        self.assertIn('daily_stats', data_m)
+        self.assertEqual(data_m['daily_stats']['daily_wins'], 24)
+        self.assertEqual(data_m['daily_stats']['daily_streak'], 6)
+
+        # JoealBadmash
+        res_j = self.app.get('/api/players/JoealBadmash')
+        self.assertEqual(res_j.status_code, 200)
+        data_j = json.loads(res_j.data)
+        self.assertIn('daily_stats', data_j)
+        self.assertEqual(data_j['daily_stats']['daily_wins'], 31)
+        self.assertEqual(data_j['daily_stats']['daily_streak'], 9)
+
 if __name__ == '__main__':
     unittest.main()

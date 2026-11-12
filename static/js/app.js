@@ -11,6 +11,7 @@ const state = {
   selectedGame: 'EggWars',
   selectedMode: 'All Modes',
   leaderboardSort: 'points',
+  timeframe: 'all_time',
   leaderboardSearch: '',
   bundles: [],
   clips: [],
@@ -80,6 +81,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initSearchAutocomplete();
   initCommunityClipSubmissions();
   startBundleCountdownTimer();
+  initTimeframeSelector();
+  loadDailyLeaders();
 
   // Live leaderboards sync button
   const syncBtn = document.getElementById('sync-leaderboards-btn');
@@ -92,6 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
         showToast(data.message || 'Synced live Bedrock leaderboards!');
         loadGlobalStats();
+        loadDailyLeaders();
         loadLeaderboards();
       } catch (err) {
         showToast('Sync error. Try again shortly.');
@@ -172,9 +176,90 @@ async function loadGlobalStats() {
       document.getElementById('stat-leaderboard-entries').innerText = formatNumber(s.total_leaderboard_entries);
       document.getElementById('stat-encounters-count').innerText = formatNumber(s.total_encounters);
       document.getElementById('stat-clips-count').innerText = formatNumber(s.total_clips);
+
+      const dailyWinsElem = document.getElementById('stat-daily-wins');
+      if (dailyWinsElem && s.today_tracked_wins !== undefined) {
+        dailyWinsElem.innerText = `+${formatNumber(s.today_tracked_wins)}`;
+      }
+
+      const onlinePlayersElem = document.getElementById('stat-online-players');
+      if (onlinePlayersElem && s.online_players !== undefined) {
+        onlinePlayersElem.innerText = formatNumber(s.online_players);
+      }
+
+      const grinderTicker = document.getElementById('hero-grinder-ticker');
+      const grinderText = document.getElementById('hero-grinder-text');
+      if (grinderTicker && grinderText && s.top_daily_grinder) {
+        const g = s.top_daily_grinder;
+        grinderText.innerHTML = `Top Daily Grinder: <a href="#player/${encodeURIComponent(g.gamertag)}" style="color:var(--accent-cyan); text-decoration:none; font-weight:700;">${sanitizeHTML(g.gamertag)}</a> (${sanitizeHTML(g.rank_title || 'Bedrock Elite')}) with <span style="color:#10b981; font-weight:800;">+${formatNumber(g.daily_wins)} wins today</span> across modes!`;
+        grinderTicker.style.display = 'inline-flex';
+      }
     }
   } catch (err) {
     console.error('Failed to load stats:', err);
+  }
+}
+
+function initTimeframeSelector() {
+  const allTimeBtn = document.getElementById('timeframe-alltime-btn');
+  const dailyBtn = document.getElementById('timeframe-daily-btn');
+  if (!allTimeBtn || !dailyBtn) return;
+
+  allTimeBtn.addEventListener('click', () => {
+    if (state.timeframe === 'all_time') return;
+    state.timeframe = 'all_time';
+    allTimeBtn.classList.add('active');
+    dailyBtn.classList.remove('active', 'daily-active');
+    updateTableHeaderForTimeframe();
+    loadLeaderboards();
+  });
+
+  dailyBtn.addEventListener('click', () => {
+    if (state.timeframe === 'daily') return;
+    state.timeframe = 'daily';
+    dailyBtn.classList.add('active', 'daily-active');
+    allTimeBtn.classList.remove('active');
+    updateTableHeaderForTimeframe();
+    loadLeaderboards();
+  });
+}
+
+function updateTableHeaderForTimeframe() {
+  const pointsTh = document.getElementById('th-points-label');
+  const killsTh = document.getElementById('th-kills-label');
+  const streakTh = document.getElementById('th-streak-label');
+  if (state.timeframe === 'daily') {
+    if (pointsTh) pointsTh.innerHTML = '⚡ Wins Today';
+    if (killsTh) killsTh.innerHTML = '⚔️ Kills Today';
+    if (streakTh) streakTh.innerHTML = '🔥 Streak';
+  } else {
+    if (pointsTh) pointsTh.innerHTML = 'Points / Wins';
+    if (killsTh) killsTh.innerHTML = 'Kills';
+    if (streakTh) streakTh.innerHTML = 'Streak';
+  }
+}
+
+async function loadDailyLeaders() {
+  const container = document.getElementById('daily-grinders-list');
+  if (!container) return;
+
+  try {
+    const res = await fetch('/api/leaderboards/daily-leaders');
+    const data = await res.json();
+    if (!data.success || !data.daily_leaders || data.daily_leaders.length === 0) {
+      container.innerHTML = `<span style="font-size:0.78rem; color:var(--text-subtle);">Tracking active grinders...</span>`;
+      return;
+    }
+
+    container.innerHTML = data.daily_leaders.map((p, idx) => `
+      <a href="#player/${encodeURIComponent(p.gamertag)}" class="grinder-chip" title="${sanitizeHTML(p.gamertag)} - ${sanitizeHTML(p.top_mode || 'Competitive')}">
+        <img src="${p.avatar_icon || `https://mc-heads.net/avatar/${encodeURIComponent(p.gamertag)}/40`}" alt="${sanitizeHTML(p.gamertag)}" class="grinder-chip-avatar" onerror="this.src='https://mc-heads.net/avatar/${encodeURIComponent(p.gamertag)}/40';" />
+        <span style="font-weight: 600; color: ${p.avatar_color || '#fff'};">#${idx + 1} ${sanitizeHTML(p.gamertag)}</span>
+        <span class="grinder-chip-wins">+${p.daily_wins} wins today</span>
+      </a>
+    `).join('');
+  } catch (err) {
+    console.error('Failed to load daily leaders:', err);
   }
 }
 
@@ -248,7 +333,7 @@ async function loadLeaderboards() {
   tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-subtle);">Fetching Bedrock leaderboards...</td></tr>`;
 
   try {
-    const url = `/api/leaderboards?game=${encodeURIComponent(state.selectedGame)}&mode=${encodeURIComponent(state.selectedMode)}&sort_by=${state.leaderboardSort}&search=${encodeURIComponent(state.leaderboardSearch)}`;
+    const url = `/api/leaderboards?game=${encodeURIComponent(state.selectedGame)}&mode=${encodeURIComponent(state.selectedMode)}&sort_by=${state.leaderboardSort}&timeframe=${state.timeframe}&search=${encodeURIComponent(state.leaderboardSearch)}`;
     const res = await fetch(url);
     const data = await res.json();
 
@@ -275,6 +360,8 @@ function renderPodium(podium) {
     return;
   }
 
+  const isDaily = state.timeframe === 'daily';
+
   container.innerHTML = podium.map((p, index) => {
     const rank = index + 1;
     const initial = p.player_gamertag.charAt(0).toUpperCase();
@@ -286,6 +373,41 @@ function renderPodium(podium) {
     ` : `
       <div class="player-avatar-box">
         <div class="player-avatar-fallback" style="background: ${p.avatar_color || '#00e5ff'};">${initial}</div>
+      </div>
+    `;
+
+    const statsBlock = isDaily ? `
+      <div class="podium-stats">
+        <div class="stat-item daily-highlight">
+          <span class="stat-val">+${formatNumber(p.daily_wins)}</span>
+          <span class="stat-lbl">Wins Today</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-val">${formatNumber(p.daily_kills)}</span>
+          <span class="stat-lbl">Kills Today</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-val">${p.streak}🔥</span>
+          <span class="stat-lbl">Streak</span>
+        </div>
+      </div>
+    ` : `
+      <div class="podium-stats">
+        <div class="stat-item">
+          <span class="stat-val">${formatNumber(p.points || p.wins)}</span>
+          <span class="stat-lbl">Points</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-val">${formatNumber(p.kills)}</span>
+          <span class="stat-lbl">Kills</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-val">${p.streak}🔥</span>
+          <span class="stat-lbl">Streak</span>
+        </div>
+      </div>
+      <div style="margin-top: 0.5rem;">
+        <span class="daily-wins-badge ${p.daily_wins > 10 ? 'hot' : ''}">⚡ +${p.daily_wins || 0} wins today</span>
       </div>
     `;
 
@@ -302,20 +424,7 @@ function renderPodium(podium) {
         <div style="font-size: 0.74rem; color: var(--text-subtle); margin-bottom: 0.5rem;">
           ${sanitizeHTML(p.mode)}
         </div>
-        <div class="podium-stats">
-          <div class="stat-item">
-            <span class="stat-val">${formatNumber(p.points || p.wins)}</span>
-            <span class="stat-lbl">Points</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-val">${formatNumber(p.kills)}</span>
-            <span class="stat-lbl">Kills</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-val">${p.streak}🔥</span>
-            <span class="stat-lbl">Streak</span>
-          </div>
-        </div>
+        ${statsBlock}
       </div>
     `;
   }).join('');
@@ -324,6 +433,8 @@ function renderPodium(podium) {
 function renderLeaderboardTable(rows) {
   const tableBody = document.getElementById('leaderboard-table-body');
   if (!tableBody) return;
+
+  const isDaily = state.timeframe === 'daily';
 
   tableBody.innerHTML = rows.map((r) => {
     const initial = r.player_gamertag.charAt(0).toUpperCase();
@@ -336,6 +447,23 @@ function renderLeaderboardTable(rows) {
       <div class="player-mini-avatar">
         <div class="player-avatar-fallback" style="background: ${r.avatar_color || '#00e5ff'}; font-size: 0.9rem;">${initial}</div>
       </div>
+    `;
+
+    const pointsCell = isDaily ? `
+      <td style="font-weight: 700;">
+        <span class="daily-wins-badge hot" style="font-size: 0.82rem;">⚡ +${formatNumber(r.daily_wins)} wins</span>
+      </td>
+      <td>${formatNumber(r.daily_kills)}</td>
+      <td>${r.streak ? `${r.streak} 🔥` : '-'}</td>
+    ` : `
+      <td>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="font-weight: 700; color: #fff;">${formatNumber(r.points || r.wins)}</span>
+          <span class="daily-wins-badge ${r.daily_wins > 10 ? 'hot' : ''}">+${r.daily_wins || 0} today</span>
+        </div>
+      </td>
+      <td>${formatNumber(r.kills)}</td>
+      <td>${r.streak ? `${r.streak} 🔥` : '-'}</td>
     `;
 
     return `
@@ -356,9 +484,7 @@ function renderLeaderboardTable(rows) {
         </td>
         <td style="color: var(--text-muted); font-size: 0.82rem;">${sanitizeHTML(r.mode)}</td>
         <td><span class="podium-rank-title" style="color: ${r.avatar_color || '#fff'};">${sanitizeHTML(r.rank_title || 'Player')}</span></td>
-        <td style="font-weight: 700; color: #fff;">${formatNumber(r.points || r.wins)}</td>
-        <td>${formatNumber(r.kills)}</td>
-        <td>${r.streak ? `${r.streak} 🔥` : '-'}</td>
+        ${pointsCell}
         <td style="color: var(--accent-cyan); font-weight: 600; font-size: 0.82rem;">${sanitizeHTML(r.favorite_kit || 'Standard')}</td>
       </tr>
     `;
@@ -882,6 +1008,60 @@ function renderPlayerProfile() {
     avatarBox.innerHTML = `
       <div class="player-avatar-fallback" style="background:${p.avatar_color || '#00e5ff'};">${initial}</div>
     `;
+  }
+
+  // Daily Grinding Metrics
+  const daily = state.activePlayer.daily_stats || {};
+  const dailyWins = p.daily_wins !== undefined && p.daily_wins !== null ? p.daily_wins : (daily.daily_wins || 0);
+  const dailyKills = p.daily_kills !== undefined && p.daily_kills !== null ? p.daily_kills : (daily.daily_kills || 0);
+  const dailyStreak = p.daily_streak !== undefined && p.daily_streak !== null ? p.daily_streak : (daily.daily_streak || 0);
+
+  const dailyWinsElem = document.getElementById('profile-daily-wins');
+  if (dailyWinsElem) dailyWinsElem.innerText = `+${formatNumber(dailyWins)}`;
+
+  const dailyKillsElem = document.getElementById('profile-daily-kills');
+  if (dailyKillsElem) dailyKillsElem.innerText = `+${formatNumber(dailyKills)}`;
+
+  const dailyStreakElem = document.getElementById('profile-daily-streak');
+  if (dailyStreakElem) dailyStreakElem.innerText = `${dailyStreak} 🔥`;
+
+  const leaderboards = state.activePlayer.leaderboards || [];
+  const modesCountElem = document.getElementById('profile-daily-modes');
+  if (modesCountElem) modesCountElem.innerText = leaderboards.length;
+
+  const activeStatusElem = document.getElementById('profile-active-status');
+  if (activeStatusElem) {
+    if (daily.is_active_today || dailyWins > 0) {
+      activeStatusElem.innerText = '🟢 Active Today';
+      activeStatusElem.className = 'daily-active-status';
+      activeStatusElem.style.display = 'inline-flex';
+    } else {
+      activeStatusElem.innerText = '💤 Inactive Today';
+      activeStatusElem.className = 'daily-active-status';
+      activeStatusElem.style.color = 'var(--text-subtle)';
+      activeStatusElem.style.borderColor = 'var(--border-subtle)';
+      activeStatusElem.style.background = 'transparent';
+    }
+  }
+
+  // Render player game modes & daily wins breakdown table
+  const modesTbody = document.getElementById('profile-modes-table-body');
+  if (modesTbody) {
+    if (leaderboards.length === 0) {
+      modesTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 1.5rem; color: var(--text-subtle);">No ranked leaderboards registered yet for ${sanitizeHTML(p.gamertag)}.</td></tr>`;
+    } else {
+      modesTbody.innerHTML = leaderboards.map(lb => `
+        <tr>
+          <td><strong style="color: #fff;">${sanitizeHTML(lb.game)}</strong></td>
+          <td style="color: var(--text-muted);">${sanitizeHTML(lb.mode)}</td>
+          <td><span class="daily-wins-badge ${lb.daily_wins > 10 ? 'hot' : ''}">⚡ +${formatNumber(lb.daily_wins || 0)} today</span></td>
+          <td style="font-weight: 700; color: #fff;">${formatNumber(lb.points || lb.wins)}</td>
+          <td>${formatNumber(lb.kills)}</td>
+          <td style="color: var(--accent-cyan); font-weight: 600;">${sanitizeHTML(lb.favorite_kit || 'Standard')}</td>
+          <td><span class="podium-rank-badge" style="width: 26px; height: 26px; font-size: 0.75rem;">#${lb.rank || 1}</span></td>
+        </tr>
+      `).join('');
+    }
   }
 
   // Badges

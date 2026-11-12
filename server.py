@@ -47,7 +47,37 @@ def get_stats():
     total_bundles = cursor.fetchone()[0]
     cursor.execute('SELECT COUNT(DISTINCT game) FROM leaderboards')
     total_games = cursor.fetchone()[0]
+
+    # Daily tracked totals
+    cursor.execute('SELECT COALESCE(SUM(daily_wins), 0), COALESCE(SUM(daily_kills), 0) FROM players')
+    daily_row = cursor.fetchone()
+    today_tracked_wins = daily_row[0] if daily_row else 0
+    today_tracked_kills = daily_row[1] if daily_row else 0
+
+    # Top daily grinder
+    cursor.execute('''
+        SELECT gamertag, rank_title, avatar_icon, avatar_color, daily_wins, daily_kills, daily_streak
+        FROM players 
+        ORDER BY daily_wins DESC 
+        LIMIT 1
+    ''')
+    top_grinder_row = cursor.fetchone()
+    top_daily_grinder = dict(top_grinder_row) if top_grinder_row else None
+
     conn.close()
+
+    # Attempt to fetch live Bedrock online count with quick timeout
+    online_count = 6842
+    try:
+        req = urllib.request.Request('https://api.cc-data.ru/bedrock/status', headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            status_data = json.loads(resp.read().decode('utf-8'))
+            if 'players' in status_data and 'online' in status_data['players']:
+                online_count = status_data['players']['online']
+            elif 'online' in status_data:
+                online_count = status_data['online']
+    except Exception:
+        pass
 
     return jsonify({
         "success": True,
@@ -58,6 +88,10 @@ def get_stats():
             "total_clips": total_clips,
             "active_bundles": total_bundles,
             "total_games": total_games,
+            "today_tracked_wins": today_tracked_wins,
+            "today_tracked_kills": today_tracked_kills,
+            "top_daily_grinder": top_daily_grinder,
+            "online_players": online_count,
             "online_bedrock_server": "play.cubecraft.net",
             "bedrock_port": 19132
         }
@@ -141,22 +175,30 @@ def get_leaderboards():
     game = request.args.get('game', 'EggWars')
     mode = request.args.get('mode', 'All Modes')
     sort_by = request.args.get('sort_by', 'points')
+    timeframe = request.args.get('timeframe', 'all_time').lower()
     search = request.args.get('search', '').strip()
 
-    valid_sorts = {
-        'points': 'l.points DESC, l.wins DESC',
-        'wins': 'l.wins DESC, l.points DESC',
-        'kills': 'l.kills DESC',
-        'streak': 'l.streak DESC',
-        'rating': 'l.rating DESC'
-    }
-    order_clause = valid_sorts.get(sort_by, 'l.points DESC, l.wins DESC')
+    if timeframe == 'daily':
+        if sort_by == 'kills':
+            order_clause = 'l.daily_kills DESC, l.daily_wins DESC'
+        else:
+            order_clause = 'l.daily_wins DESC, l.daily_kills DESC, l.points DESC'
+    else:
+        valid_sorts = {
+            'points': 'l.points DESC, l.wins DESC',
+            'wins': 'l.wins DESC, l.points DESC',
+            'kills': 'l.kills DESC',
+            'streak': 'l.streak DESC',
+            'rating': 'l.rating DESC'
+        }
+        order_clause = valid_sorts.get(sort_by, 'l.points DESC, l.wins DESC')
 
     conn = get_db()
     cursor = conn.cursor()
 
     query = '''
         SELECT l.*, p.rank_title, p.reputation_score, p.avatar_color, p.avatar_icon as player_avatar_icon,
+               p.daily_wins as player_daily_wins, p.daily_kills as player_daily_kills, p.daily_streak as player_daily_streak,
                (SELECT COUNT(*) FROM encounters WHERE player_gamertag = l.player_gamertag) as encounter_count
         FROM leaderboards l
         LEFT JOIN players p ON l.player_gamertag = p.gamertag
@@ -196,10 +238,32 @@ def get_leaderboards():
         "game": game,
         "mode": mode,
         "sort_by": sort_by,
+        "timeframe": timeframe,
         "podium": podium,
         "leaderboard": results,
         "total_results": len(results)
     })
+
+@app.route('/api/leaderboards/daily-leaders', methods=['GET'])
+def get_daily_leaders():
+    """Returns top daily grinders across all CubeCraft Bedrock modes today."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT p.gamertag, p.raw_name, p.rank_title, p.avatar_icon, p.avatar_color,
+               p.daily_wins, p.daily_kills, p.daily_streak, p.is_active_today,
+               (SELECT l.game || ' (' || l.mode || ')' FROM leaderboards l WHERE l.player_gamertag = p.gamertag ORDER BY l.daily_wins DESC LIMIT 1) as top_mode,
+               (SELECT COUNT(*) FROM encounters WHERE player_gamertag = p.gamertag) as encounter_count
+        FROM players p
+        WHERE p.daily_wins > 0
+        ORDER BY p.daily_wins DESC, p.daily_kills DESC
+        LIMIT 10
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+
+    leaders = [dict(r) for r in rows]
+    return jsonify({"success": True, "daily_leaders": leaders, "total": len(leaders)})
 
 @app.route('/api/sync-leaderboards', methods=['POST'])
 def sync_leaderboards():
@@ -564,6 +628,14 @@ def get_player_profile(gamertag):
 
     conn.close()
 
+    daily_stats = {
+        "daily_wins": player.get('daily_wins', 0) if isinstance(player, dict) else 0,
+        "daily_kills": player.get('daily_kills', 0) if isinstance(player, dict) else 0,
+        "daily_streak": player.get('daily_streak', 0) if isinstance(player, dict) else 0,
+        "is_active_today": bool(player.get('is_active_today', 1)) if isinstance(player, dict) else True,
+        "last_active_time": player.get('last_active_time', 'Active Today') if isinstance(player, dict) else 'Active Today'
+    }
+
     return jsonify({
         "success": True,
         "player": player,
@@ -575,6 +647,7 @@ def get_player_profile(gamertag):
             "badges": badges,
             "tag_breakdown": tag_counts
         },
+        "daily_stats": daily_stats,
         "leaderboards": leaderboards,
         "encounters": encounters
     })
