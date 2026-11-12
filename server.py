@@ -14,7 +14,10 @@ from datetime import datetime
 from database import (
     get_db, init_db, sync_cubecraft_leaderboards,
     sync_cubecraft_marketplace, seed_clips, seed_custom_players,
-    parse_leaderboard_info, parse_minecraft_rank
+    parse_leaderboard_info, parse_minecraft_rank,
+    init_server_tracker, log_server_status,
+    get_cross_mode_masters, get_competitiveness_scores,
+    get_rank_distribution, get_server_tracker_stats
 )
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
@@ -23,6 +26,7 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 init_db()
 seed_custom_players()
 seed_clips()
+init_server_tracker(6000)
 
 # Ensure marketplace has authentic data
 conn_init = get_db()
@@ -228,6 +232,92 @@ def sync_leaderboards():
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+# ----------------------------------------------------
+# Cross-Mode Dominance & Server Analytics API
+# ----------------------------------------------------
+
+@app.route('/api/analytics/all-around-masters', methods=['GET'])
+def get_all_around_masters_api():
+    limit = max(1, min(100, int(request.args.get('limit', 25))))
+    masters = get_cross_mode_masters(limit)
+    return jsonify({
+        "success": True,
+        "masters": masters,
+        "total": len(masters)
+    })
+
+@app.route('/api/analytics/competitiveness', methods=['GET'])
+def get_competitiveness_api():
+    sort = request.args.get('sort', 'tightest').lower()
+    game_filter = request.args.get('game', 'all').lower()
+
+    scores = get_competitiveness_scores()
+    if game_filter and game_filter != 'all':
+        scores = [s for s in scores if s['game'].lower() == game_filter]
+
+    if sort == 'widest':
+        scores.sort(key=lambda s: s['point_spread'], reverse=True)
+    elif sort == 'highest_threshold':
+        scores.sort(key=lambda s: s['min_points'], reverse=True)
+    elif sort == 'highest_leader':
+        scores.sort(key=lambda s: s['max_points'], reverse=True)
+    elif sort == 'alphabetical':
+        scores.sort(key=lambda s: (s['game'], s['mode']))
+    else:  # tightest
+        scores.sort(key=lambda s: s['point_spread'])
+
+    return jsonify({
+        "success": True,
+        "competitiveness": scores,
+        "total_modes": len(scores)
+    })
+
+@app.route('/api/analytics/rank-distribution', methods=['GET'])
+def get_rank_distribution_api():
+    ranks = get_rank_distribution()
+    return jsonify({
+        "success": True,
+        **ranks
+    })
+
+@app.route('/api/analytics/server-tracker', methods=['GET'])
+def get_server_tracker_api():
+    # Attempt to log live player count from live status API
+    try:
+        req = urllib.request.Request('https://api.cc-data.ru/bedrock/status', headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            status_data = json.loads(resp.read().decode('utf-8'))
+            if isinstance(status_data, list) and len(status_data) > 0:
+                for entry in status_data:
+                    if entry.get('name') == 'online':
+                        log_server_status(entry.get('value', 6000))
+                        break
+            elif isinstance(status_data, dict) and 'online' in status_data:
+                log_server_status(status_data['online'])
+    except Exception:
+        pass
+
+    stats = get_server_tracker_stats()
+    return jsonify({
+        "success": True,
+        **stats
+    })
+
+@app.route('/api/analytics/overview', methods=['GET'])
+def get_analytics_overview_api():
+    masters = get_cross_mode_masters(15)
+    scores = get_competitiveness_scores()
+    ranks = get_rank_distribution()
+    tracker = get_server_tracker_stats()
+
+    return jsonify({
+        "success": True,
+        "masters": masters,
+        "competitiveness": scores,
+        "rank_distribution": ranks,
+        "server_tracker": tracker
+    })
 
 # ----------------------------------------------------
 # CubeCraft Bedrock Marketplace API (900+ Official Items)

@@ -33,6 +33,9 @@
           <li class="nav-item active" data-view="leaderboards">
             <a href="#leaderboards">🏆 Leaderboards</a>
           </li>
+          <li class="nav-item" data-view="analytics">
+            <a href="#analytics">📊 Analytics</a>
+          </li>
           <li class="nav-item" data-view="marketplace">
             <a href="#marketplace">🛒 Marketplace</a>
           </li>
@@ -161,6 +164,234 @@
             <!-- Rendered dynamically -->
           </tbody>
         </table>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       View: Cross-Mode Dominance & Server Analytics Hub
+       ======================================================================== -->
+  <section id="view-analytics" class="view-section">
+    <div class="container">
+      
+      <!-- Analytics Header -->
+      <div class="controls-bar" style="flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+          <h2 style="font-size: 1.4rem; font-weight: 800; display: flex; align-items: center; gap: 0.5rem;">
+            <span>📊 Cross-Mode Dominance & Server Analytics</span>
+            <span class="bundle-item-pill" style="color: var(--accent-cyan); font-size: 0.75rem;">100% Authentic Data</span>
+          </h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+            Real mathematical aggregates across 826+ ranked competitors, 39 Bedrock game modes, and 24-hour server telemetry.
+          </p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <button class="btn btn-outline btn-sm" id="refresh-analytics-btn">
+            🔄 Refresh Analytics
+          </button>
+          <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.3);">
+            ● Live Engine Active
+          </span>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Summary Ribbon -->
+      <div class="analytics-ribbon" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="stat-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); padding: 1.1rem; border-radius: var(--radius-md);">
+          <div style="font-size: 0.75rem; color: var(--text-subtle); font-weight: 700; text-transform: uppercase;">Top Cross-Mode Legend</div>
+          <div style="font-size: 1.3rem; font-weight: 800; color: #fff; margin: 0.3rem 0;" id="ribbon-top-master">pitzj yay</div>
+          <div style="font-size: 0.78rem; color: var(--accent-cyan);" id="ribbon-top-master-modes">Ranked in 4 Distinct Games</div>
+        </div>
+
+        <div class="stat-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); padding: 1.1rem; border-radius: var(--radius-md);">
+          <div style="font-size: 0.75rem; color: var(--text-subtle); font-weight: 700; text-transform: uppercase;">Tightest Point Race</div>
+          <div style="font-size: 1.3rem; font-weight: 800; color: #ef4444; margin: 0.3rem 0;" id="ribbon-tightest-mode">Parkour Classic</div>
+          <div style="font-size: 0.78rem; color: var(--text-muted);" id="ribbon-tightest-spread">828 Pts Spread (#1 to #25)</div>
+        </div>
+
+        <div class="stat-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); padding: 1.1rem; border-radius: var(--radius-md);">
+          <div style="font-size: 0.75rem; color: var(--text-subtle); font-weight: 700; text-transform: uppercase;">Dominant Rank Category</div>
+          <div style="font-size: 1.3rem; font-weight: 800; color: #a855f7; margin: 0.3rem 0;" id="ribbon-top-rank">Obsidian Tier</div>
+          <div style="font-size: 0.78rem; color: var(--text-muted);" id="ribbon-top-rank-pct">47.3% of Top Competitors</div>
+        </div>
+
+        <div class="stat-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); padding: 1.1rem; border-radius: var(--radius-md);">
+          <div style="font-size: 0.75rem; color: var(--text-subtle); font-weight: 700; text-transform: uppercase;">Server Online Status</div>
+          <div style="font-size: 1.3rem; font-weight: 800; color: #10b981; margin: 0.3rem 0;" id="ribbon-online-count">6,000 Online</div>
+          <div style="font-size: 0.78rem; color: var(--accent-emerald);" id="ribbon-peak-window">Peak: 16:00 - 21:00 UTC</div>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs between Analytics Sub-Sections -->
+      <div class="analytics-tabs-bar" style="display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem; margin-bottom: 1.75rem; flex-wrap: wrap;">
+        <button class="filter-btn analytics-tab-btn active" data-tab="masters">👑 All-Around Masters</button>
+        <button class="filter-btn analytics-tab-btn" data-tab="competitiveness">🎯 Mode Competitiveness & Spread</button>
+        <button class="filter-btn analytics-tab-btn" data-tab="ranks">💎 Rank Distribution</button>
+        <button class="filter-btn analytics-tab-btn" data-tab="tracker">📈 24h Server Tracker & Best Times</button>
+      </div>
+
+      <!-- Tab 1: All-Around Masters -->
+      <div id="analytics-tab-masters" class="analytics-tab-content active">
+        <div class="analytics-section-intro" style="margin-bottom: 1.25rem;">
+          <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff;">👑 All-Around Masters: Cross-Mode Legends</h3>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+            Players demonstrating true versatile mastery by ranking in the top-25 across multiple completely different CubeCraft games (e.g. EggWars + SkyWars + BlockWars + Parkour).
+          </p>
+        </div>
+        <div id="analytics-masters-grid" class="analytics-masters-list">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+
+      <!-- Tab 2: Competitiveness & Point Spread -->
+      <div id="analytics-tab-competitiveness" class="analytics-tab-content" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
+          <div>
+            <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff;">🎯 Competitiveness Score & Point Spread Index</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+              Calculates the exact point gap between Rank #1 and Rank #25 across every game mode. A small spread signifies an ultra-tight pack where positions change frequently.
+            </p>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <span style="font-size: 0.8rem; color: var(--text-subtle); font-weight: 600;">Sort By:</span>
+            <select id="competitiveness-sort-select" class="form-control" style="width: auto; height: 38px; font-size: 0.85rem;">
+              <option value="tightest">🔥 Tightest Spread (Most Fierce)</option>
+              <option value="widest">👑 Widest Spread (Leader Runaway)</option>
+              <option value="highest_threshold">🚪 Highest #25 Entry Threshold</option>
+              <option value="highest_leader">⭐ Highest #1 Leader Score</option>
+              <option value="alphabetical">🔤 Game Name (A-Z)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-container" style="border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden;">
+          <table class="custom-table" style="font-size: 0.85rem;">
+            <thead>
+              <tr>
+                <th>Game & Mode</th>
+                <th>Competitiveness Tier</th>
+                <th>Rank #1 Leader</th>
+                <th>Rank #25 Gatekeeper</th>
+                <th>Point Spread (#1 - #25)</th>
+                <th>Spread Ratio</th>
+              </tr>
+            </thead>
+            <tbody id="competitiveness-table-body">
+              <!-- Injected via JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 3: Rank Distribution -->
+      <div id="analytics-tab-ranks" class="analytics-tab-content" style="display: none;">
+        <div class="analytics-section-intro" style="margin-bottom: 1.5rem;">
+          <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff;">💎 In-Game Rank Distribution Across 826 Ranked Players</h3>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+            Proportion of Obsidian, Diamond, Emerald, VIP, Iron, and free Bedrock players holding leaderboard spots across the entire server network.
+          </p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 1.5rem; align-items: start;">
+          <!-- Rank Bars & Breakdown -->
+          <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.5rem;" id="rank-bars-container">
+            <!-- Injected via JavaScript -->
+          </div>
+
+          <!-- Rank Insights Panel -->
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: #a855f7; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+                <span>👑 Obsidian Tier Dominance</span>
+              </h4>
+              <p style="font-size: 0.84rem; color: var(--text-muted); line-height: 1.55;">
+                Over <strong>47%</strong> of all top-25 positions are held by players with Obsidian ranks (Obsidian, Obsidian Pro, and Obsidian Enforcer). This illustrates immense player retention and dedication from CubeCraft's veteran subscriber base.
+              </p>
+            </div>
+
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--accent-cyan); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+                <span>⚡ Diamond & Emerald Ranks</span>
+              </h4>
+              <p style="font-size: 0.84rem; color: var(--text-muted); line-height: 1.55;">
+                Combined, Diamond and Emerald account for approximately <strong>15.6%</strong> of the leaderboard elite, demonstrating consistent combat representation in fast-paced PvP modes like Battle Arena and SkyWars Chaos.
+              </p>
+            </div>
+
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: #10b981; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+                <span>🛡️ Free Bedrock Competitors</span>
+              </h4>
+              <p style="font-size: 0.84rem; color: var(--text-muted); line-height: 1.55;">
+                <strong>13.5%</strong> (112 players) hold top-25 positions without any store rank! Proving that CubeCraft Bedrock remains a genuine skill-first server where grinding and mechanics beat rank perks.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: 24h Server Tracker & Best Times to Play -->
+      <div id="analytics-tab-tracker" class="analytics-tab-content" style="display: none;">
+        <div class="analytics-section-intro" style="margin-bottom: 1.5rem;">
+          <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff;">📈 24-Hour Server Online Tracker & Best Times to Play</h3>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+            Continuous tracking of the CubeCraft Bedrock network player count to identify high-traffic peak hours and optimal off-peak grinding periods.
+          </p>
+        </div>
+
+        <!-- SVG Line Chart Container -->
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.5rem; margin-bottom: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+              <span style="font-size: 0.75rem; color: var(--text-subtle); font-weight: 700; text-transform: uppercase;">24-Hour Activity Curve</span>
+              <h4 style="font-size: 1.1rem; font-weight: 800; color: #fff;">Bedrock Concurrent Players (play.cubecraft.net)</h4>
+            </div>
+            <div style="display: flex; gap: 1rem; font-size: 0.8rem; align-items: center;">
+              <span style="display: flex; align-items: center; gap: 5px; color: #ef4444;"><span style="width: 10px; height: 10px; background: #ef4444; border-radius: 2px;"></span> Peak Hours</span>
+              <span style="display: flex; align-items: center; gap: 5px; color: var(--accent-cyan);"><span style="width: 10px; height: 10px; background: var(--accent-cyan); border-radius: 2px;"></span> Active Activity</span>
+              <span style="display: flex; align-items: center; gap: 5px; color: #10b981;"><span style="width: 10px; height: 10px; background: #10b981; border-radius: 2px;"></span> Off-Peak Grinding</span>
+            </div>
+          </div>
+
+          <div id="server-tracker-chart-container" style="width: 100%; height: 260px; position: relative;">
+            <!-- SVG Chart Injected via JavaScript -->
+          </div>
+        </div>
+
+        <!-- Recommendations Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.25rem;">
+          <div style="background: var(--bg-surface); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); padding: 1.25rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+              <h4 style="font-size: 1rem; font-weight: 800; color: #ef4444; display: flex; align-items: center; gap: 0.4rem;">
+                <span>🔥 Peak Competitive Hours</span>
+              </h4>
+              <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444;" id="tracker-peak-time">16:00 - 21:00 UTC</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.8rem;">
+              Peak crossover between European evening and North American afternoon. Player counts peak around <strong>8,500 - 9,200</strong> concurrent Bedrockers.
+            </p>
+            <div style="font-size: 0.78rem; background: var(--bg-surface-elevated); padding: 0.6rem 0.8rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); color: #fff;">
+              🎯 <strong>Best For:</strong> Instant matchmaking in all 39 modes, 50v50 BlockWars, high-CPS duels, and intense competitive matches.
+            </div>
+          </div>
+
+          <div style="background: var(--bg-surface); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-md); padding: 1.25rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+              <h4 style="font-size: 1rem; font-weight: 800; color: #10b981; display: flex; align-items: center; gap: 0.4rem;">
+                <span>🏆 Off-Peak Leaderboard Grinding</span>
+              </h4>
+              <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;" id="tracker-offpeak-time">04:00 - 08:00 UTC</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.8rem;">
+              Quietest hours on the network with player counts dropping to <strong>3,200 - 3,900</strong> players.
+            </p>
+            <div style="font-size: 0.78rem; background: var(--bg-surface-elevated); padding: 0.6rem 0.8rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); color: #fff;">
+              ⚡ <strong>Best For:</strong> Solo EggWars/SkyWars win grinding, completing seasonal quests, and avoiding sweaty 4-stack squads.
+            </div>
+          </div>
+        </div>
+
       </div>
 
     </div>

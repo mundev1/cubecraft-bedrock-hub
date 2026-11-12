@@ -235,5 +235,84 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         helpful_data = json.loads(res_helpful.data)
         self.assertTrue(helpful_data['success'])
 
+    def test_analytics_all_around_masters(self):
+        res = self.app.get('/api/analytics/all-around-masters?limit=10')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        masters = data['masters']
+        self.assertGreater(len(masters), 0)
+
+        # First master must be ranked in at least 3 distinct games
+        first = masters[0]
+        self.assertIn('gamertag', first)
+        self.assertIn('distinct_games', first)
+        self.assertGreaterEqual(first['distinct_games'], 3)
+        self.assertIn('total_points', first)
+        self.assertGreater(first['total_points'], 0)
+        self.assertIn('leaderboards', first)
+        self.assertGreaterEqual(len(first['leaderboards']), 2)
+
+    def test_analytics_competitiveness_scores(self):
+        res = self.app.get('/api/analytics/competitiveness?sort=tightest')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        scores = data['competitiveness']
+        self.assertEqual(len(scores), 39)
+
+        # Check spread calculation on every mode
+        for s in scores:
+            self.assertEqual(s['point_spread'], s['max_points'] - s['min_points'])
+            self.assertGreater(s['max_points'], 0)
+            self.assertIn('rank1_player', s)
+            self.assertIn('rank25_player', s)
+            self.assertIn('tier', s)
+
+        # Tightest spread mode should have lowest point_spread
+        self.assertLessEqual(scores[0]['point_spread'], scores[-1]['point_spread'])
+
+    def test_analytics_rank_distribution(self):
+        res = self.app.get('/api/analytics/rank-distribution')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertGreaterEqual(data['total_ranked_players'], 800)
+        
+        # Check grouped tiers
+        tiers = {t['tier']: t for t in data['grouped_tiers']}
+        self.assertIn('Obsidian Tier', tiers)
+        self.assertIn('Diamond Tier', tiers)
+        self.assertIn('Emerald Tier', tiers)
+        self.assertIn('VIP Tier', tiers)
+        self.assertIn('Iron Tier', tiers)
+        self.assertIn('Bedrock Player (Free)', tiers)
+
+        # Check total percentages sum to ~100%
+        pct_sum = sum(t['percentage'] for t in data['grouped_tiers'])
+        self.assertAlmostEqual(pct_sum, 100.0, delta=1.0)
+
+    def test_analytics_server_tracker(self):
+        res = self.app.get('/api/analytics/server-tracker')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertIn('current_online', data)
+        self.assertGreater(data['current_online'], 0)
+        self.assertIn('hourly_timeline', data)
+        self.assertEqual(len(data['hourly_timeline']), 24)
+        self.assertIn('peak_window', data)
+        self.assertIn('offpeak_window', data)
+
+    def test_analytics_overview(self):
+        res = self.app.get('/api/analytics/overview')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertIn('masters', data)
+        self.assertIn('competitiveness', data)
+        self.assertIn('rank_distribution', data)
+        self.assertIn('server_tracker', data)
+
 if __name__ == '__main__':
     unittest.main()

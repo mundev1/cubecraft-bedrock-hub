@@ -20,6 +20,9 @@ const state = {
   marketplaceSearch: '',
   marketplaceTotalPages: 1,
   marketplaceTotalItems: 0,
+  analyticsData: null,
+  analyticsTab: 'masters',
+  competitivenessSort: 'tightest',
   bundles: [],
   clips: [],
   clipsFilterGame: 'all',
@@ -83,6 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
   loadGamesList();
   loadMarketplace();
   initMarketplaceControls();
+  initAnalytics();
+  loadAnalytics();
   loadClips();
   loadRecentEncounters();
   initModalListeners();
@@ -128,8 +133,11 @@ function handleHashRouting() {
     loadPlayerProfile(gamertag);
   } else if (hash === 'bundles') {
     switchView('marketplace');
-  } else if (['leaderboards', 'marketplace', 'clips', 'encounters'].includes(hash)) {
+  } else if (['leaderboards', 'analytics', 'marketplace', 'clips', 'encounters'].includes(hash)) {
     switchView(hash);
+    if (hash === 'analytics') {
+      loadAnalytics();
+    }
   }
 }
 
@@ -395,6 +403,433 @@ if (lbSearchInput) {
     state.leaderboardSearch = e.target.value;
     loadLeaderboards();
   });
+}
+
+// ==========================================================================
+// Cross-Mode Dominance & Server Analytics Engine (100% Real Aggregated Data)
+// ==========================================================================
+
+function initAnalytics() {
+  document.querySelectorAll('.analytics-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.analytics-tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.analytics-tab-content').forEach(c => c.style.display = 'none');
+
+      btn.classList.add('active');
+      const targetTab = btn.getAttribute('data-tab');
+      state.analyticsTab = targetTab;
+      const content = document.getElementById(`analytics-tab-${targetTab}`);
+      if (content) {
+        content.style.display = 'block';
+        if (targetTab === 'tracker') {
+          renderServerTrackerChart();
+        }
+      }
+    });
+  });
+
+  const sortSelect = document.getElementById('competitiveness-sort-select');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      state.competitivenessSort = e.target.value;
+      if (state.analyticsData && state.analyticsData.competitiveness) {
+        renderCompetitiveness();
+      }
+    });
+  }
+
+  const refreshBtn = document.getElementById('refresh-analytics-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.innerText = '⏳ Calculating...';
+      refreshBtn.disabled = true;
+      try {
+        await loadAnalytics();
+        showToast('Analytics recomputed from live database!');
+      } catch (e) {
+        showToast('Error refreshing analytics.');
+      } finally {
+        refreshBtn.innerText = '🔄 Refresh Analytics';
+        refreshBtn.disabled = false;
+      }
+    });
+  }
+}
+
+async function loadAnalytics() {
+  try {
+    const res = await fetch('/api/analytics/overview');
+    const data = await res.json();
+    if (!data.success) return;
+
+    state.analyticsData = data;
+
+    // 1. Update Ribbon
+    if (data.masters && data.masters.length > 0) {
+      const topMaster = data.masters[0];
+      const masterElem = document.getElementById('ribbon-top-master');
+      if (masterElem) masterElem.innerText = topMaster.gamertag;
+      const modesElem = document.getElementById('ribbon-top-master-modes');
+      if (modesElem) modesElem.innerText = `Ranked in ${topMaster.distinct_games} Distinct Games (${formatNumber(topMaster.total_points)} Pts)`;
+    }
+
+    if (data.competitiveness && data.competitiveness.length > 0) {
+      const tightest = data.competitiveness[0];
+      const tightElem = document.getElementById('ribbon-tightest-mode');
+      if (tightElem) tightElem.innerText = `${tightest.game} ${tightest.mode}`;
+      const spreadElem = document.getElementById('ribbon-tightest-spread');
+      if (spreadElem) spreadElem.innerText = `${formatNumber(tightest.point_spread)} Pts Spread (#1 to #25)`;
+    }
+
+    if (data.rank_distribution && data.rank_distribution.grouped_tiers) {
+      const tiers = data.rank_distribution.grouped_tiers;
+      const topTier = tiers[0];
+      const rankElem = document.getElementById('ribbon-top-rank');
+      if (rankElem) rankElem.innerText = topTier.tier;
+      const rankPctElem = document.getElementById('ribbon-top-rank-pct');
+      if (rankPctElem) rankPctElem.innerText = `${topTier.percentage}% of Top Competitors (${topTier.count} players)`;
+    }
+
+    if (data.server_tracker) {
+      const tracker = data.server_tracker;
+      const onlineElem = document.getElementById('ribbon-online-count');
+      if (onlineElem) onlineElem.innerText = `${formatNumber(tracker.current_online)} Online`;
+      const peakElem = document.getElementById('ribbon-peak-window');
+      if (peakElem) peakElem.innerText = `Peak: ${tracker.peak_window}`;
+    }
+
+    // 2. Render Sub-Modules
+    renderAllAroundMasters();
+    renderCompetitiveness();
+    renderRankDistribution();
+    renderServerTrackerChart();
+  } catch (err) {
+    console.error('Failed to load analytics:', err);
+  }
+}
+
+function renderAllAroundMasters() {
+  const container = document.getElementById('analytics-masters-grid');
+  if (!container || !state.analyticsData || !state.analyticsData.masters) return;
+
+  const gameIcons = {
+    'EggWars': '🥚',
+    'SkyWars': '☁️',
+    'BlockWars': '🧱',
+    'BedWars': '🛏️',
+    'Lucky Islands': '🍀',
+    'Duels (Battle Arena)': '🏆',
+    'Survival Games': '⚔️',
+    'MinerWare': '⛏️',
+    'Parkour': '🏃',
+    'Pillars of Fortune': '🏛️',
+    'Disasters': '🌋',
+    'Mob Hunt': '🏹'
+  };
+
+  container.innerHTML = state.analyticsData.masters.map((master, idx) => {
+    const medalClass = idx === 0 ? 'top-1' : (idx === 1 ? 'top-2' : (idx === 2 ? 'top-3' : ''));
+    const medalSymbol = idx === 0 ? '🥇' : (idx === 1 ? '🥈' : (idx === 2 ? '🥉' : `#${idx + 1}`));
+    const avatarUrl = master.avatar_icon || `https://mc-heads.net/avatar/${encodeURIComponent(master.gamertag)}/100`;
+
+    return `
+      <div class="analytics-master-card" onclick="window.location.hash='player/${encodeURIComponent(master.gamertag)}'">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <div class="master-medal-box ${medalClass}">${medalSymbol}</div>
+          <div class="master-avatar-wrap">
+            <img 
+              src="${avatarUrl}" 
+              alt="${sanitizeHTML(master.gamertag)}"
+              loading="lazy"
+              onerror="this.onerror=null; this.src='https://mc-heads.net/avatar/${encodeURIComponent(master.gamertag)}/100';"
+            />
+          </div>
+        </div>
+
+        <div class="master-details">
+          <div class="master-title-row">
+            <span class="master-gamertag">${sanitizeHTML(master.gamertag)}</span>
+            <span class="podium-rank-title" style="font-size: 0.72rem; padding: 2px 7px;">${sanitizeHTML(master.rank_title || 'Bedrock Player')}</span>
+            <span class="bundle-item-pill" style="color: var(--accent-cyan); font-weight: 700; font-size: 0.74rem;">
+              ⭐ ${master.distinct_games} Distinct Games (${master.distinct_modes} Sub-Modes)
+            </span>
+          </div>
+
+          <div class="master-badges-row">
+            ${(master.leaderboards || []).map(lb => `
+              <span class="analytics-mode-chip">
+                <span>${gameIcons[lb.game] || '🎮'} ${sanitizeHTML(lb.game)}:</span>
+                <strong>#${lb.rank}</strong>
+                <span style="font-size: 0.68rem; color: var(--text-subtle);">(${formatNumber(lb.points)} pts)</span>
+              </span>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="master-score-box">
+          <span style="font-size: 0.72rem; color: var(--text-subtle); text-transform: uppercase; font-weight: 700;">Cross-Mode Points</span>
+          <span class="master-total-points">${formatNumber(master.total_points)}</span>
+          <span style="font-size: 0.75rem; color: var(--accent-cyan);">Inspect Profile →</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderCompetitiveness() {
+  const tbody = document.getElementById('competitiveness-table-body');
+  if (!tbody || !state.analyticsData || !state.analyticsData.competitiveness) return;
+
+  let scores = [...state.analyticsData.competitiveness];
+  const sort = state.competitivenessSort || 'tightest';
+
+  if (sort === 'widest') {
+    scores.sort((a, b) => b.point_spread - a.point_spread);
+  } else if (sort === 'highest_threshold') {
+    scores.sort((a, b) => b.min_points - a.min_points);
+  } else if (sort === 'highest_leader') {
+    scores.sort((a, b) => b.max_points - a.max_points);
+  } else if (sort === 'alphabetical') {
+    scores.sort((a, b) => a.game.localeCompare(b.game) || a.mode.localeCompare(b.mode));
+  } else {
+    scores.sort((a, b) => a.point_spread - b.point_spread);
+  }
+
+  const maxSpreadFound = Math.max(...scores.map(s => s.point_spread), 1);
+
+  tbody.innerHTML = scores.map(s => {
+    const tightPct = Math.max(5, Math.min(100, Math.round((1 - (s.point_spread / maxSpreadFound)) * 100)));
+
+    return `
+      <tr>
+        <td>
+          <div style="font-weight: 700; color: #fff;">${sanitizeHTML(s.game)}</div>
+          <div style="font-size: 0.76rem; color: var(--text-subtle);">${sanitizeHTML(s.mode)}</div>
+        </td>
+        <td>
+          <span class="badge" style="background: rgba(255, 255, 255, 0.05); color: ${s.tier_color}; border: 1px solid ${s.tier_color}40; font-weight: 700; font-size: 0.74rem;">
+            ${s.tier_badge}
+          </span>
+          <div style="font-size: 0.72rem; color: var(--text-subtle); margin-top: 2px;">${s.tier}</div>
+        </td>
+        <td>
+          <div style="font-weight: 700; color: #fbbf24;">${sanitizeHTML(s.rank1_player || 'Leader')}</div>
+          <div style="font-size: 0.76rem; color: var(--text-muted);">${formatNumber(s.max_points)} points</div>
+        </td>
+        <td>
+          <div style="font-weight: 600; color: var(--text-main);">${sanitizeHTML(s.rank25_player || 'Gatekeeper')}</div>
+          <div style="font-size: 0.76rem; color: var(--text-subtle);">${formatNumber(s.min_points)} pts cutoff</div>
+        </td>
+        <td>
+          <div class="spread-meter-container">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem;">
+              <strong style="color: ${s.tier_color};">${formatNumber(s.point_spread)} pts</strong>
+              <span style="color: var(--text-subtle); font-size: 0.72rem;">gap</span>
+            </div>
+            <div class="spread-meter-bg">
+              <div class="spread-meter-fill" style="width: ${tightPct}%; background: ${s.tier_color};"></div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <span style="font-family: var(--font-mono); font-weight: 700; color: ${s.ratio > 5 ? '#a855f7' : 'var(--text-main)'};">
+            ${s.ratio}x
+          </span>
+          <div style="font-size: 0.7rem; color: var(--text-subtle);">lead multiple</div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderRankDistribution() {
+  const container = document.getElementById('rank-bars-container');
+  if (!container || !state.analyticsData || !state.analyticsData.rank_distribution) return;
+
+  const data = state.analyticsData.rank_distribution;
+  const tiers = data.grouped_tiers || [];
+
+  container.innerHTML = `
+    <!-- Top Stacked Overview Bar -->
+    <div style="margin-bottom: 1.75rem;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.6rem;">
+        <span style="font-size: 0.82rem; color: var(--text-subtle); font-weight: 700; text-transform: uppercase;">Stacked Share (826 Players)</span>
+        <span style="font-size: 0.82rem; color: var(--accent-cyan); font-weight: 700;">100% Top-25 Leaderboard Base</span>
+      </div>
+      <div style="display: flex; width: 100%; height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-subtle);">
+        ${tiers.map(t => `
+          <div 
+            style="width: ${t.percentage}%; background: ${t.color}; height: 100%;" 
+            title="${t.tier}: ${t.percentage}% (${t.count} players)"
+          ></div>
+        `).join('')}
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.75rem; font-size: 0.75rem;">
+        ${tiers.map(t => `
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <span style="width: 10px; height: 10px; border-radius: 2px; background: ${t.color}; display: inline-block;"></span>
+            <span style="color: var(--text-muted);">${t.tier} (${t.percentage}%)</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- Detailed Individual Progress Bars -->
+    <div class="rank-dist-list">
+      ${tiers.map(t => `
+        <div class="rank-dist-item">
+          <div class="rank-dist-header">
+            <span style="font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: ${t.color};"></span>
+              ${t.tier}
+            </span>
+            <span style="font-family: var(--font-mono); font-weight: 800; color: ${t.color};">
+              ${t.percentage}% <span style="font-size: 0.75rem; color: var(--text-subtle); font-weight: 400;">(${t.count} players)</span>
+            </span>
+          </div>
+          <div class="rank-dist-progress-bg">
+            <div class="rank-dist-progress-bar" style="width: ${t.percentage}%; background: ${t.color};"></div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderServerTrackerChart() {
+  const container = document.getElementById('server-tracker-chart-container');
+  if (!container || !state.analyticsData || !state.analyticsData.server_tracker) return;
+
+  const tracker = state.analyticsData.server_tracker;
+  const points = tracker.hourly_timeline || [];
+  if (points.length === 0) return;
+
+  const width = container.clientWidth || 800;
+  const height = 240;
+  const padLeft = 45;
+  const padRight = 20;
+  const padTop = 25;
+  const padBottom = 35;
+
+  const plotW = width - padLeft - padRight;
+  const plotH = height - padTop - padBottom;
+
+  const minVal = Math.min(...points.map(p => p.online_count), 2500);
+  const maxVal = Math.max(...points.map(p => p.online_count), 9500);
+
+  const getX = (idx) => padLeft + (idx / (points.length - 1)) * plotW;
+  const getY = (val) => padTop + plotH - ((val - minVal) / (maxVal - minVal)) * plotH;
+
+  let pathD = `M ${getX(0)} ${getY(points[0].online_count)}`;
+  for (let i = 1; i < points.length; i++) {
+    const x0 = getX(i - 1);
+    const y0 = getY(points[i - 1].online_count);
+    const x1 = getX(i);
+    const y1 = getY(points[i].online_count);
+    const mx = (x0 + x1) / 2;
+    pathD += ` C ${mx} ${y0}, ${mx} ${y1}, ${x1} ${y1}`;
+  }
+
+  const areaD = `${pathD} L ${getX(points.length - 1)} ${padTop + plotH} L ${getX(0)} ${padTop + plotH} Z`;
+
+  const gridVals = [
+    Math.round(minVal),
+    Math.round(minVal + (maxVal - minVal) * 0.33),
+    Math.round(minVal + (maxVal - minVal) * 0.66),
+    Math.round(maxVal)
+  ];
+
+  let svgHtml = `
+    <svg viewBox="0 0 ${width} ${height}" style="width: 100%; height: 100%; overflow: visible;" id="tracker-svg">
+      <defs>
+        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#00e5ff" stop-opacity="0.0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Horizontal Grid Lines -->
+      ${gridVals.map(val => `
+        <line 
+          x1="${padLeft}" y1="${getY(val)}" 
+          x2="${width - padRight}" y2="${getY(val)}" 
+          stroke="rgba(255, 255, 255, 0.08)" 
+          stroke-dasharray="4,4"
+        />
+        <text 
+          x="${padLeft - 8}" y="${getY(val) + 4}" 
+          fill="var(--text-subtle)" font-size="10" 
+          text-anchor="end" font-family="monospace"
+        >${formatNumber(val)}</text>
+      `).join('')}
+
+      <!-- Bottom baseline -->
+      <line 
+        x1="${padLeft}" y1="${padTop + plotH}" 
+        x2="${width - padRight}" y2="${padTop + plotH}" 
+        stroke="var(--border-subtle)"
+      />
+
+      <!-- Area fill -->
+      <path d="${areaD}" fill="url(#areaGrad)" />
+
+      <!-- Curve Line -->
+      <path d="${pathD}" fill="none" stroke="var(--accent-cyan)" stroke-width="2.5" stroke-linecap="round"/>
+
+      <!-- Data Points & Labels -->
+      ${points.map((p, idx) => {
+        const x = getX(idx);
+        const y = getY(p.online_count);
+        const color = p.is_peak ? '#ef4444' : (p.is_offpeak ? '#10b981' : 'var(--accent-cyan)');
+        const showLabel = idx % 3 === 0 || idx === points.length - 1;
+
+        return `
+          <g class="chart-point-group" data-hour="${p.label}" data-count="${p.online_count}">
+            <circle cx="${x}" cy="${y}" r="3.5" fill="${color}" stroke="#06080d" stroke-width="1.5" />
+            ${showLabel ? `
+              <text 
+                x="${x}" y="${padTop + plotH + 18}" 
+                fill="var(--text-subtle)" font-size="10" 
+                text-anchor="middle" font-family="monospace"
+              >${p.hour}:00</text>
+            ` : ''}
+          </g>
+        `;
+      }).join('')}
+    </svg>
+    <div id="chart-tooltip" class="server-chart-tooltip"></div>
+  `;
+
+  container.innerHTML = svgHtml;
+
+  const tooltip = container.querySelector('#chart-tooltip');
+  container.querySelectorAll('.chart-point-group').forEach(grp => {
+    grp.addEventListener('mouseenter', (e) => {
+      const hour = grp.getAttribute('data-hour');
+      const count = grp.getAttribute('data-count');
+      if (tooltip) {
+        tooltip.innerHTML = `<strong>${hour}</strong>: ${formatNumber(parseInt(count))} players`;
+        tooltip.style.display = 'block';
+      }
+    });
+
+    grp.addEventListener('mousemove', (e) => {
+      if (tooltip) {
+        const rect = container.getBoundingClientRect();
+        tooltip.style.left = `${e.clientX - rect.left + 10}px`;
+        tooltip.style.top = `${e.clientY - rect.top - 30}px`;
+      }
+    });
+
+    grp.addEventListener('mouseleave', () => {
+      if (tooltip) tooltip.style.display = 'none';
+    });
+  });
+
+  const peakTimeElem = document.getElementById('tracker-peak-time');
+  if (peakTimeElem) peakTimeElem.innerText = tracker.peak_window;
+  const offpeakTimeElem = document.getElementById('tracker-offpeak-time');
+  if (offpeakTimeElem) offpeakTimeElem.innerText = tracker.offpeak_window;
 }
 
 // ==========================================================================
