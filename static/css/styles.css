@@ -1522,35 +1522,6 @@ textarea.form-control {
   margin-top: 0.35rem;
 }
 
-/* Quick Player Search Chips */
-.quick-player-chips {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 4px;
-}
-
-.quick-chip {
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-  border-radius: var(--radius-full);
-  padding: 2px 8px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  transition: all var(--transition-fast);
-}
-
-.quick-chip:hover {
-  border-color: var(--accent-cyan);
-  color: var(--accent-cyan);
-  background: var(--bg-surface-hover);
-}
-
 .featured-players-showcase {
   background: linear-gradient(135deg, rgba(0, 229, 255, 0.04) 0%, var(--bg-surface) 100%);
   border: 1px solid var(--border-subtle);
