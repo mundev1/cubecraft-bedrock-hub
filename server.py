@@ -9,6 +9,7 @@ import json
 import os
 import re
 import math
+import time
 import urllib.request
 from datetime import datetime
 from database import (
@@ -36,6 +37,43 @@ if cur_init.fetchone()[0] == 0:
     sync_cubecraft_marketplace()
 conn_init.close()
 
+# ----------------------------------------------------
+# Live Bedrock Status Cache (Refreshes Every 30 Seconds)
+# ----------------------------------------------------
+_online_cache = {
+    "count": 6000,
+    "last_fetched": 0
+}
+
+def get_live_online_count():
+    """Fetches real online count from CubeCraft status API with 30s in-memory caching."""
+    now = time.time()
+    if now - _online_cache["last_fetched"] < 30:
+        return _online_cache["count"]
+
+    try:
+        req = urllib.request.Request('https://api.cc-data.ru/bedrock/status', headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            status_data = json.loads(resp.read().decode('utf-8'))
+            if isinstance(status_data, list) and len(status_data) > 0:
+                for entry in status_data:
+                    if entry.get('name') == 'online':
+                        val = int(entry.get('value', 6000))
+                        _online_cache["count"] = val
+                        _online_cache["last_fetched"] = now
+                        log_server_status(val)
+                        return val
+            elif isinstance(status_data, dict) and 'online' in status_data:
+                val = int(status_data['online'])
+                _online_cache["count"] = val
+                _online_cache["last_fetched"] = now
+                log_server_status(val)
+                return val
+    except Exception:
+        pass
+
+    return _online_cache["count"]
+
 @app.route('/')
 def index():
     return send_from_directory('static', 'index.html')
@@ -62,21 +100,7 @@ def get_stats():
     total_games = cursor.fetchone()[0]
     conn.close()
 
-    # Fetch live Bedrock online player count from CubeCraft status API
-    online_count = 6000
-    try:
-        req = urllib.request.Request('https://api.cc-data.ru/bedrock/status', headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=2.0) as resp:
-            status_data = json.loads(resp.read().decode('utf-8'))
-            if isinstance(status_data, list) and len(status_data) > 0:
-                for entry in status_data:
-                    if entry.get('name') == 'online':
-                        online_count = entry.get('value', 6000)
-                        break
-            elif isinstance(status_data, dict) and 'online' in status_data:
-                online_count = status_data['online']
-    except Exception:
-        pass
+    online_count = get_live_online_count()
 
     return jsonify({
         "success": True,
@@ -283,21 +307,7 @@ def get_rank_distribution_api():
 
 @app.route('/api/analytics/server-tracker', methods=['GET'])
 def get_server_tracker_api():
-    # Attempt to log live player count from live status API
-    try:
-        req = urllib.request.Request('https://api.cc-data.ru/bedrock/status', headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
-            status_data = json.loads(resp.read().decode('utf-8'))
-            if isinstance(status_data, list) and len(status_data) > 0:
-                for entry in status_data:
-                    if entry.get('name') == 'online':
-                        log_server_status(entry.get('value', 6000))
-                        break
-            elif isinstance(status_data, dict) and 'online' in status_data:
-                log_server_status(status_data['online'])
-    except Exception:
-        pass
-
+    get_live_online_count()
     stats = get_server_tracker_stats()
     return jsonify({
         "success": True,

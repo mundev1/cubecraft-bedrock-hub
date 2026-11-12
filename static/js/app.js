@@ -118,6 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Handle URL hash changes
   window.addEventListener('hashchange', handleHashRouting);
   handleHashRouting();
+
+  // Auto-refresh live stats every 30 seconds
+  setInterval(loadGlobalStats, 30000);
 });
 
 function handleHashRouting() {
@@ -186,24 +189,30 @@ async function loadGlobalStats() {
     const data = await res.json();
     if (data.success) {
       const s = data.stats;
-      document.getElementById('stat-players-count').innerText = formatNumber(s.total_players);
-      document.getElementById('stat-leaderboard-entries').innerText = formatNumber(s.total_leaderboard_entries);
-      document.getElementById('stat-encounters-count').innerText = formatNumber(s.total_encounters);
-      document.getElementById('stat-clips-count').innerText = formatNumber(s.total_clips);
 
-      const mpElem = document.getElementById('stat-marketplace-count');
-      if (mpElem && (s.total_marketplace_items !== undefined || s.active_bundles !== undefined)) {
-        mpElem.innerText = formatNumber(s.total_marketplace_items || s.active_bundles);
+      const setStat = (id, val) => {
+        const el = document.getElementById(id);
+        if (el && val !== undefined && val !== null) {
+          el.innerText = formatNumber(val);
+        }
+      };
+
+      setStat('stat-players-count', s.total_players);
+      setStat('stat-leaderboard-entries', s.total_leaderboard_entries);
+      setStat('stat-encounters-count', s.total_encounters);
+      setStat('stat-clips-count', s.total_clips);
+      setStat('stat-marketplace-count', s.total_marketplace_items || s.active_bundles);
+      setStat('stat-games-count', s.total_games || 39);
+      setStat('stat-online-players', s.online_players);
+
+      const pillCount = document.getElementById('server-pill-count');
+      if (pillCount && s.online_players) {
+        pillCount.innerText = `(${formatNumber(s.online_players)} Online)`;
       }
 
-      const gamesElem = document.getElementById('stat-games-count');
-      if (gamesElem) {
-        gamesElem.innerText = formatNumber(s.total_games || 39);
-      }
-
-      const onlinePlayersElem = document.getElementById('stat-online-players');
-      if (onlinePlayersElem && s.online_players !== undefined) {
-        onlinePlayersElem.innerText = formatNumber(s.online_players);
+      const ribbonOnline = document.getElementById('ribbon-online-count');
+      if (ribbonOnline && s.online_players) {
+        ribbonOnline.innerText = `${formatNumber(s.online_players)} Online`;
       }
     }
   } catch (err) {
