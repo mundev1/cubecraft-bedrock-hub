@@ -13,15 +13,19 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from server import app
-from database import init_db, seed_bundles_and_clips, seed_custom_players
+from database import init_db, sync_cubecraft_marketplace, seed_clips, seed_custom_players
 
 class TestCubeCraftBedrockAPI(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        init_db()
+        seed_custom_players()
+        seed_clips()
+        sync_cubecraft_marketplace()
+
     def setUp(self):
         self.app = app.test_client()
         self.app.testing = True
-        init_db()
-        seed_custom_players()
-        seed_bundles_and_clips()
 
     def test_global_stats_authentic(self):
         response = self.app.get('/api/stats')
@@ -116,16 +120,47 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         self.assertGreater(len(pdata_j['encounters']), 0)
         self.assertNotIn('daily_stats', pdata_j)
 
-    def test_bundles_catalog_and_images(self):
-        response = self.app.get('/api/bundles')
+    def test_marketplace_catalog_and_authentic_images(self):
+        # 1. Fetch paginated marketplace catalog
+        response = self.app.get('/api/marketplace?limit=24&page=1')
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data['success'])
-        self.assertGreater(len(data['bundles']), 0)
-        for b in data['bundles']:
-            self.assertIn('banner_img', b)
-            self.assertTrue(b['banner_img'].startswith('http'))
-            self.assertIn('items', b)
+        self.assertGreaterEqual(data['total'], 900)
+        self.assertEqual(len(data['items']), 24)
+        
+        # Verify first item contains authentic schema and image
+        first = data['items'][0]
+        self.assertIn('id', first)
+        self.assertIn('name', first)
+        self.assertIn('price', first)
+        self.assertIn('thumbnail', first)
+        self.assertTrue(first['thumbnail'].startswith('https://'))
+        self.assertIn('available', first)
+        self.assertIn(first['available'], (0, 1))
+
+        # 2. Test search filter
+        res_search = self.app.get('/api/marketplace?search=Chibi')
+        self.assertEqual(res_search.status_code, 200)
+        data_search = json.loads(res_search.data)
+        self.assertTrue(data_search['success'])
+        self.assertGreater(data_search['total'], 0)
+        self.assertTrue(any('chibi' in item['name'].lower() for item in data_search['items']))
+
+        # 3. Test single item inspection endpoint
+        item_id = first['id']
+        res_item = self.app.get(f'/api/marketplace/{item_id}')
+        self.assertEqual(res_item.status_code, 200)
+        item_data = json.loads(res_item.data)
+        self.assertTrue(item_data['success'])
+        self.assertEqual(item_data['item']['id'], item_id)
+        self.assertEqual(item_data['item']['name'], first['name'])
+
+        # 4. Verify backwards compatibility alias
+        res_alias = self.app.get('/api/bundles')
+        self.assertEqual(res_alias.status_code, 200)
+        alias_data = json.loads(res_alias.data)
+        self.assertTrue(alias_data['success'])
 
     def test_clips_and_community_submission(self):
         response = self.app.get('/api/clips?game=all&type=all')

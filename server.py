@@ -8,11 +8,12 @@ import sqlite3
 import json
 import os
 import re
+import math
 import urllib.request
 from datetime import datetime
 from database import (
     get_db, init_db, sync_cubecraft_leaderboards,
-    seed_bundles_and_clips, seed_custom_players,
+    sync_cubecraft_marketplace, seed_clips, seed_custom_players,
     parse_leaderboard_info, parse_minecraft_rank
 )
 
@@ -21,7 +22,15 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 # Ensure database is initialized
 init_db()
 seed_custom_players()
-seed_bundles_and_clips()
+seed_clips()
+
+# Ensure marketplace has authentic data
+conn_init = get_db()
+cur_init = conn_init.cursor()
+cur_init.execute('SELECT COUNT(*) FROM marketplace')
+if cur_init.fetchone()[0] == 0:
+    sync_cubecraft_marketplace()
+conn_init.close()
 
 @app.route('/')
 def index():
@@ -43,8 +52,8 @@ def get_stats():
     total_encounters = cursor.fetchone()[0]
     cursor.execute('SELECT COUNT(*) FROM clips')
     total_clips = cursor.fetchone()[0]
-    cursor.execute('SELECT COUNT(*) FROM bundles')
-    total_bundles = cursor.fetchone()[0]
+    cursor.execute('SELECT COUNT(*) FROM marketplace')
+    total_marketplace_items = cursor.fetchone()[0]
     cursor.execute('SELECT COUNT(DISTINCT game) FROM leaderboards')
     total_games = cursor.fetchone()[0]
     conn.close()
@@ -72,7 +81,8 @@ def get_stats():
             "total_leaderboard_entries": total_leaderboard_entries,
             "total_encounters": total_encounters,
             "total_clips": total_clips,
-            "active_bundles": total_bundles,
+            "total_marketplace_items": total_marketplace_items,
+            "active_bundles": total_marketplace_items,
             "total_games": total_games,
             "online_players": online_count,
             "online_bedrock_server": "play.cubecraft.net",
@@ -220,48 +230,123 @@ def sync_leaderboards():
         return jsonify({"success": False, "error": str(e)}), 500
 
 # ----------------------------------------------------
-# Bundles API
+# CubeCraft Bedrock Marketplace API (900+ Official Items)
+# ----------------------------------------------------
+
+@app.route('/api/marketplace', methods=['GET'])
+def get_marketplace():
+    """
+    Returns authentic CubeCraft Bedrock Marketplace catalog from SQLite cache.
+    Supports pagination (page, limit), full-text search, filter pills, and sorting.
+    """
+    page = max(1, int(request.args.get('page', 1)))
+    limit = max(1, min(100, int(request.args.get('limit', 24))))
+    search = request.args.get('search', '').strip()
+    filter_val = request.args.get('filter', 'all').lower()
+    sort_by = request.args.get('sort', 'rating').lower()
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    conditions = []
+    params = []
+
+    if search:
+        conditions.append('(LOWER(name) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?) OR LOWER(search_name) LIKE LOWER(?))')
+        params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+
+    if filter_val == 'available':
+        conditions.append('available = 1')
+    elif filter_val == 'high_rated':
+        conditions.append('rating >= 4.5')
+    elif filter_val == 'under_500':
+        conditions.append('price <= 500')
+    elif filter_val == 'free':
+        conditions.append('price = 0')
+    elif filter_val == 'cages':
+        conditions.append('(LOWER(name) LIKE "%cage%" OR LOWER(description) LIKE "%cage%")')
+    elif filter_val == 'egg':
+        conditions.append('(LOWER(name) LIKE "%egg%" OR LOWER(description) LIKE "%egg%")')
+    elif filter_val == 'skins':
+        conditions.append('(LOWER(name) LIKE "%skin%" OR LOWER(description) LIKE "%skin%")')
+
+    where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    # Count matching items
+    cursor.execute(f"SELECT COUNT(*) FROM marketplace {where_clause}", params)
+    total_matching = cursor.fetchone()[0]
+
+    # Sorting
+    if sort_by == 'price_low':
+        order_clause = "ORDER BY price ASC, rating DESC"
+    elif sort_by == 'price_high':
+        order_clause = "ORDER BY price DESC, rating DESC"
+    elif sort_by == 'recent':
+        order_clause = "ORDER BY creation_date DESC"
+    elif sort_by == 'name':
+        order_clause = "ORDER BY name ASC"
+    else:  # 'rating' / 'popular' default
+        order_clause = "ORDER BY CASE WHEN rating IS NULL THEN 1 ELSE 0 END, rating DESC, price DESC"
+
+    offset = (page - 1) * limit
+    query = f"SELECT * FROM marketplace {where_clause} {order_clause} LIMIT ? OFFSET ?"
+    cursor.execute(query, params + [limit, offset])
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    total_pages = math.ceil(total_matching / limit) if limit > 0 else 1
+
+    return jsonify({
+        "success": True,
+        "items": rows,
+        "total": total_matching,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    })
+
+@app.route('/api/marketplace/<item_id>', methods=['GET'])
+def get_marketplace_item(item_id):
+    """Returns single authentic marketplace item detail."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM marketplace WHERE id = ? OR LOWER(search_name) = LOWER(?)', (item_id, item_id))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"success": False, "error": "Marketplace item not found"}), 404
+
+    return jsonify({"success": True, "item": dict(row)})
+
+@app.route('/api/sync-marketplace', methods=['POST'])
+def trigger_sync_marketplace():
+    """Trigger an authentic sync of the 900+ Bedrock Marketplace items."""
+    try:
+        count = sync_cubecraft_marketplace()
+        return jsonify({
+            "success": True,
+            "message": f"Synchronized {count} authentic Bedrock Marketplace items!"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ----------------------------------------------------
+# Legacy Bundles API (Compatibility Alias)
 # ----------------------------------------------------
 
 @app.route('/api/bundles', methods=['GET'])
 def get_bundles():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM bundles ORDER BY is_featured DESC, price_minecoins DESC')
-    rows = cursor.fetchall()
+    cursor.execute('SELECT * FROM marketplace WHERE available = 1 ORDER BY rating DESC LIMIT 24')
+    rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
-
-    bundles = []
-    for r in rows:
-        b = dict(r)
-        try:
-            b['items'] = json.loads(b['items_json'])
-        except Exception:
-            b['items'] = []
-        b.pop('items_json', None)
-        bundles.append(b)
-
-    return jsonify({"success": True, "bundles": bundles})
+    return jsonify({"success": True, "bundles": rows, "items": rows, "total": len(rows)})
 
 @app.route('/api/bundles/<bundle_id>', methods=['GET'])
 def get_bundle_detail(bundle_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM bundles WHERE id = ?', (bundle_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
-        return jsonify({"success": False, "error": "Bundle not found"}), 404
-
-    b = dict(row)
-    try:
-        b['items'] = json.loads(b['items_json'])
-    except Exception:
-        b['items'] = []
-    b.pop('items_json', None)
-
-    return jsonify({"success": True, "bundle": b})
+    return get_marketplace_item(bundle_id)
 
 # ----------------------------------------------------
 # Playable Medal & Community Clips API

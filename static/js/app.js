@@ -12,6 +12,14 @@ const state = {
   selectedGame: 'EggWars',
   selectedMode: 'All Modes',
   leaderboardSearch: '',
+  marketplace: [],
+  marketplacePage: 1,
+  marketplaceLimit: 24,
+  marketplaceFilter: 'all',
+  marketplaceSort: 'rating',
+  marketplaceSearch: '',
+  marketplaceTotalPages: 1,
+  marketplaceTotalItems: 0,
   bundles: [],
   clips: [],
   clipsFilterGame: 'all',
@@ -73,13 +81,13 @@ document.addEventListener('DOMContentLoaded', () => {
   initServerPill();
   loadGlobalStats();
   loadGamesList();
-  loadBundles();
+  loadMarketplace();
+  initMarketplaceControls();
   loadClips();
   loadRecentEncounters();
   initModalListeners();
   initSearchAutocomplete();
   initCommunityClipSubmissions();
-  startBundleCountdownTimer();
 
   // Live leaderboards sync button
   const syncBtn = document.getElementById('sync-leaderboards-btn');
@@ -118,7 +126,9 @@ function handleHashRouting() {
     const gamertag = decodeURIComponent(hash.split('/')[1]);
     switchView('encounters');
     loadPlayerProfile(gamertag);
-  } else if (['leaderboards', 'bundles', 'clips', 'encounters'].includes(hash)) {
+  } else if (hash === 'bundles') {
+    switchView('marketplace');
+  } else if (['leaderboards', 'marketplace', 'clips', 'encounters'].includes(hash)) {
     switchView(hash);
   }
 }
@@ -172,6 +182,11 @@ async function loadGlobalStats() {
       document.getElementById('stat-leaderboard-entries').innerText = formatNumber(s.total_leaderboard_entries);
       document.getElementById('stat-encounters-count').innerText = formatNumber(s.total_encounters);
       document.getElementById('stat-clips-count').innerText = formatNumber(s.total_clips);
+
+      const mpElem = document.getElementById('stat-marketplace-count');
+      if (mpElem && (s.total_marketplace_items !== undefined || s.active_bundles !== undefined)) {
+        mpElem.innerText = formatNumber(s.total_marketplace_items || s.active_bundles);
+      }
 
       const gamesElem = document.getElementById('stat-games-count');
       if (gamesElem) {
@@ -383,116 +398,332 @@ if (lbSearchInput) {
 }
 
 // ==========================================================================
-// Bundles Showcase View
+// Marketplace Showcase View (900+ Official Items)
 // ==========================================================================
 
-async function loadBundles() {
-  const container = document.getElementById('bundles-grid');
-  if (!container) return;
+let marketplaceSearchTimeout = null;
 
-  try {
-    const res = await fetch('/api/bundles');
-    const data = await res.json();
-    if (!data.success) return;
+function initMarketplaceControls() {
+  const searchInput = document.getElementById('marketplace-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(marketplaceSearchTimeout);
+      marketplaceSearchTimeout = setTimeout(() => {
+        state.marketplaceSearch = e.target.value.trim();
+        state.marketplacePage = 1;
+        loadMarketplace();
+      }, 250);
+    });
+  }
 
-    state.bundles = data.bundles;
-    renderBundles();
-  } catch (err) {
-    console.error('Failed to load bundles:', err);
+  const sortSelect = document.getElementById('marketplace-sort-select');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      state.marketplaceSort = e.target.value;
+      state.marketplacePage = 1;
+      loadMarketplace();
+    });
+  }
+
+  document.querySelectorAll('.mp-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mp-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.marketplaceFilter = btn.getAttribute('data-filter') || 'all';
+      state.marketplacePage = 1;
+      loadMarketplace();
+    });
+  });
+
+  const syncBtn = document.getElementById('sync-marketplace-btn');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', async () => {
+      syncBtn.innerText = '⏳ Refreshing...';
+      syncBtn.disabled = true;
+      try {
+        const res = await fetch('/api/sync-marketplace', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message || 'Marketplace refreshed successfully!');
+        loadGlobalStats();
+        loadMarketplace();
+      } catch (err) {
+        showToast('Error syncing marketplace.');
+      } finally {
+        syncBtn.innerText = '🔄 Refresh Catalog';
+        syncBtn.disabled = false;
+      }
+    });
   }
 }
 
-function renderBundles() {
-  const container = document.getElementById('bundles-grid');
-  if (!container) return;
+async function loadMarketplace() {
+  const grid = document.getElementById('marketplace-grid');
+  if (!grid) return;
 
-  container.innerHTML = state.bundles.map(b => `
-    <div class="bundle-card ${b.is_featured ? 'featured' : ''}" data-id="${b.id}">
-      <div class="bundle-banner" style="background-image: url('${b.banner_img}');">
-        <span class="bundle-badge ${b.rarity.toLowerCase()}">${b.badge || b.rarity}</span>
-        ${b.expiry_date ? `<span class="bundle-timer" data-expiry="${b.expiry_date}">⏳ Ending Soon</span>` : ''}
-      </div>
-      <div class="bundle-content">
-        <h3 class="bundle-title">${sanitizeHTML(b.title)}</h3>
-        <p class="bundle-tagline">${sanitizeHTML(b.tagline)}</p>
-        <div class="bundle-items-preview">
-          ${(b.items || []).slice(0, 3).map(item => `
-            <span class="bundle-item-pill">${sanitizeHTML(item.name)}</span>
-          `).join('')}
-          ${(b.items || []).length > 3 ? `<span class="bundle-item-pill" style="color: var(--accent-cyan);">+${b.items.length - 3} more</span>` : ''}
-        </div>
-        <div class="bundle-footer">
-          <div class="bundle-price-box">
-            <span class="bundle-price">${formatNumber(b.price_minecoins)} Minecoins</span>
-            ${b.original_price ? `<span class="bundle-orig-price">${formatNumber(b.original_price)}</span>` : ''}
-          </div>
-          <button class="btn btn-outline btn-sm inspect-bundle-btn" data-id="${b.id}">Inspect</button>
-        </div>
-      </div>
+  grid.innerHTML = `
+    <div style="grid-column: 1/-1; text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+      <div style="font-size: 1.5rem; margin-bottom: 0.5rem; animation: pulse 1.5s infinite;">⏳</div>
+      <div>Loading official Bedrock Marketplace items...</div>
     </div>
-  `).join('');
+  `;
 
-  container.querySelectorAll('.inspect-bundle-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const bId = btn.getAttribute('data-id');
-      inspectBundle(bId);
+  try {
+    const url = `/api/marketplace?page=${state.marketplacePage}&limit=${state.marketplaceLimit}&filter=${state.marketplaceFilter}&sort=${state.marketplaceSort}&search=${encodeURIComponent(state.marketplaceSearch)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.success) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--accent-rose); padding: 2rem;">Failed to load marketplace items.</div>`;
+      return;
+    }
+
+    state.marketplace = data.items;
+    state.marketplaceTotalPages = data.total_pages;
+    state.marketplaceTotalItems = data.total;
+
+    const totalPill = document.getElementById('marketplace-total-pill');
+    if (totalPill) {
+      totalPill.innerText = `${formatNumber(data.total)} Official Items`;
+    }
+
+    renderMarketplace();
+    renderMarketplacePagination();
+  } catch (err) {
+    console.error('Failed to load marketplace:', err);
+    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--accent-rose); padding: 2rem;">Network error loading marketplace.</div>`;
+  }
+}
+
+function renderMarketplace() {
+  const grid = document.getElementById('marketplace-grid');
+  if (!grid) return;
+
+  if (state.marketplace.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
+        <div style="font-size: 2rem; margin-bottom: 0.5rem;">🔍</div>
+        <h3 style="color: #fff; font-size: 1.1rem; margin-bottom: 0.3rem;">No marketplace items found</h3>
+        <p style="font-size: 0.85rem;">Try adjusting your search query or filter settings.</p>
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = state.marketplace.map(item => {
+    const isAvailable = Boolean(item.available);
+    const ratingStr = item.rating !== null && item.rating !== undefined ? item.rating.toFixed(1) : 'New';
+    const priceStr = item.price === 0 ? 'Free' : `${formatNumber(item.price)} Minecoins`;
+    const priceClass = item.price === 0 ? 'free' : '';
+
+    return `
+      <div class="marketplace-card" data-id="${item.id}">
+        <div class="marketplace-thumb-wrap">
+          <img 
+            class="marketplace-thumb" 
+            src="${item.thumbnail}" 
+            alt="${sanitizeHTML(item.name)}"
+            loading="lazy"
+            onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\\'marketplace-thumb-fallback\\\'>🎮</div>';"
+          />
+          <span class="marketplace-rating-tag">★ ${ratingStr}</span>
+          <span class="marketplace-badge-available ${isAvailable ? 'in-store' : 'vaulted'}">
+            ${isAvailable ? 'In Store' : 'Vaulted'}
+          </span>
+        </div>
+        <div class="marketplace-content">
+          <h3 class="marketplace-title" title="${sanitizeHTML(item.name)}">${sanitizeHTML(item.name)}</h3>
+          <p class="marketplace-desc">${sanitizeHTML(item.description || 'Official CubeCraft Bedrock Marketplace item.')}</p>
+          <div class="marketplace-footer">
+            <span class="marketplace-price ${priceClass}">
+              ${item.price > 0 ? '🪙 ' : ''}${priceStr}
+            </span>
+            <button class="btn btn-outline btn-sm inspect-mp-btn" data-id="${item.id}" style="padding: 0.35rem 0.75rem; font-size: 0.78rem;">
+              Inspect
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.marketplace-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const id = card.getAttribute('data-id');
+      inspectMarketplaceItem(id);
     });
   });
 }
 
-function inspectBundle(bundleId) {
-  const bundle = state.bundles.find(b => b.id === bundleId);
-  if (!bundle) return;
+function renderMarketplacePagination() {
+  const container = document.getElementById('marketplace-pagination');
+  if (!container) return;
 
-  const modal = document.getElementById('bundle-modal');
-  const title = document.getElementById('bundle-modal-title');
-  const body = document.getElementById('bundle-modal-body');
+  const current = state.marketplacePage;
+  const total = state.marketplaceTotalPages;
 
-  title.innerText = bundle.title;
+  if (total <= 1) {
+    container.innerHTML = '';
+    return;
+  }
+
+  let html = `
+    <button class="mp-page-btn" id="mp-page-prev" ${current <= 1 ? 'disabled' : ''}>‹ Prev</button>
+  `;
+
+  // Determine page numbers to show
+  const range = [];
+  const delta = 2;
+  for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
+    range.push(i);
+  }
+
+  // First page
+  html += `<button class="mp-page-btn ${current === 1 ? 'active' : ''}" data-page="1">1</button>`;
+
+  if (current - delta > 2) {
+    html += `<span class="mp-page-info">...</span>`;
+  }
+
+  range.forEach(p => {
+    html += `<button class="mp-page-btn ${current === p ? 'active' : ''}" data-page="${p}">${p}</button>`;
+  });
+
+  if (current + delta < total - 1) {
+    html += `<span class="mp-page-info">...</span>`;
+  }
+
+  // Last page
+  if (total > 1) {
+    html += `<button class="mp-page-btn ${current === total ? 'active' : ''}" data-page="${total}">${total}</button>`;
+  }
+
+  html += `
+    <button class="mp-page-btn" id="mp-page-next" ${current >= total ? 'disabled' : ''}>Next ›</button>
+    <span class="mp-page-info" style="font-size: 0.78rem;">Page ${current} of ${total} (${formatNumber(state.marketplaceTotalItems)} items)</span>
+  `;
+
+  container.innerHTML = html;
+
+  container.querySelectorAll('.mp-page-btn[data-page]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const p = parseInt(btn.getAttribute('data-page'));
+      if (p && p !== state.marketplacePage) {
+        state.marketplacePage = p;
+        loadMarketplace();
+        const view = document.getElementById('view-marketplace');
+        if (view) view.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+
+  const prevBtn = document.getElementById('mp-page-prev');
+  if (prevBtn) {
+    prevBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.marketplacePage > 1) {
+        state.marketplacePage--;
+        loadMarketplace();
+        const view = document.getElementById('view-marketplace');
+        if (view) view.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+
+  const nextBtn = document.getElementById('mp-page-next');
+  if (nextBtn) {
+    nextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.marketplacePage < state.marketplaceTotalPages) {
+        state.marketplacePage++;
+        loadMarketplace();
+        const view = document.getElementById('view-marketplace');
+        if (view) view.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+}
+
+async function inspectMarketplaceItem(itemId) {
+  const modal = document.getElementById('marketplace-modal');
+  const title = document.getElementById('marketplace-modal-title');
+  const body = document.getElementById('marketplace-modal-body');
+  if (!modal || !title || !body) return;
+
+  let item = state.marketplace.find(i => i.id === itemId);
+  if (!item) {
+    try {
+      const res = await fetch(`/api/marketplace/${itemId}`);
+      const data = await res.json();
+      if (data.success) item = data.item;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  if (!item) return;
+
+  title.innerText = item.name;
+
+  const isAvailable = Boolean(item.available);
+  const ratingStr = item.rating !== null && item.rating !== undefined ? item.rating.toFixed(1) : 'Not Rated';
+  const priceDisplay = item.price === 0 ? 'FREE' : `${formatNumber(item.price)} Minecoins`;
+  const dateStr = item.creation_date ? new Date(item.creation_date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'Official CubeCraft Release';
+
   body.innerHTML = `
-    <div style="margin-bottom: 1.25rem; border-radius: var(--radius-md); overflow: hidden; height: 180px; background: url('${bundle.banner_img}') center/cover no-repeat; border: 1px solid var(--border-subtle); display: flex; align-items: flex-end; padding: 1rem;">
-      <span class="bundle-badge ${bundle.rarity.toLowerCase()}">${bundle.badge || bundle.rarity}</span>
-    </div>
-    <p style="font-size: 0.92rem; color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.6;">
-      ${sanitizeHTML(bundle.description)}
-    </p>
-    <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); padding: 0.75rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin-bottom: 1.5rem;">
-      <span style="font-size: 0.88rem; color: var(--text-subtle);">Official Marketplace Price:</span>
-      <strong style="color: var(--accent-cyan); font-size: 1.1rem;">${formatNumber(bundle.price_minecoins)} Minecoins</strong>
-    </div>
-    <h4 style="font-size: 0.95rem; font-weight: 700; color: #fff; margin-bottom: 0.75rem;">Cosmetics Included (${bundle.items ? bundle.items.length : 0})</h4>
-    <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-      ${(bundle.items || []).map(item => `
-        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-elevated); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-          <div>
-            <strong style="font-size: 0.88rem; color: var(--text-main);">${sanitizeHTML(item.name)}</strong>
-            <div style="font-size: 0.75rem; color: var(--text-subtle);">${sanitizeHTML(item.desc || '')}</div>
-          </div>
-          <span class="bundle-item-pill" style="font-size: 0.72rem; color: var(--accent-cyan);">${sanitizeHTML(item.type)}</span>
+    <div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1.5rem; align-items: start;">
+      <div style="position: relative; border-radius: var(--radius-md); overflow: hidden; background: #080d18; border: 1px solid var(--border-subtle); aspect-ratio: 16/9;">
+        <img 
+          src="${item.thumbnail}" 
+          alt="${sanitizeHTML(item.name)}" 
+          style="width: 100%; height: 100%; object-fit: cover;"
+          onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\\'marketplace-thumb-fallback\\\'>🎮</div>';"
+        />
+        <span class="marketplace-rating-tag" style="top: 0.75rem; left: 0.75rem; font-size: 0.8rem; padding: 4px 10px;">★ ${ratingStr}</span>
+        <span class="marketplace-badge-available ${isAvailable ? 'in-store' : 'vaulted'}" style="top: 0.75rem; right: 0.75rem; font-size: 0.75rem; padding: 4px 10px;">
+          ${isAvailable ? '🟢 In Store Now' : '🔒 Legacy / Vaulted'}
+        </span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 1rem;">
+        <div>
+          <span style="font-size: 0.75rem; color: var(--accent-cyan); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Official Bedrock Item</span>
+          <h2 style="font-size: 1.35rem; font-weight: 800; color: #fff; margin-top: 0.2rem;">${sanitizeHTML(item.name)}</h2>
+          <div style="font-size: 0.78rem; color: var(--text-subtle); margin-top: 0.2rem;">Released: ${dateStr}</div>
         </div>
-      `).join('')}
+
+        <div style="background: var(--bg-surface); padding: 0.85rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 0.85rem; color: var(--text-subtle);">Store Price:</span>
+          <span style="font-size: 1.2rem; font-weight: 800; color: #fbbf24; font-family: var(--font-mono);">
+            ${item.price > 0 ? '🪙 ' : ''}${priceDisplay}
+          </span>
+        </div>
+
+        <div>
+          <h4 style="font-size: 0.85rem; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; margin-bottom: 0.4rem;">Description</h4>
+          <div style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; white-space: pre-line; max-height: 160px; overflow-y: auto; padding-right: 0.5rem;">
+            ${sanitizeHTML(item.description || 'No description provided for this item.')}
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem;">
+          <div style="font-size: 0.74rem; color: var(--text-subtle);">Xbox Marketplace ID:</div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <code style="font-size: 0.75rem; background: var(--bg-surface-elevated); padding: 3px 6px; border-radius: 4px; color: var(--accent-cyan); word-break: break-all;">${item.id}</code>
+            <button class="btn btn-outline btn-sm copy-mp-id-btn" data-id="${item.id}" style="padding: 2px 6px; font-size: 0.72rem;">Copy</button>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
-  openModal(modal);
-}
-
-function startBundleCountdownTimer() {
-  setInterval(() => {
-    document.querySelectorAll('.bundle-timer').forEach(el => {
-      const exp = el.getAttribute('data-expiry');
-      if (!exp) return;
-      const diff = new Date(exp) - new Date();
-      if (diff <= 0) {
-        el.innerText = 'Expired';
-        return;
-      }
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-      const mins = Math.floor((diff / (1000 * 60)) % 60);
-      el.innerText = `⏳ ${days}d ${hours}h ${mins}m`;
+  body.querySelectorAll('.copy-mp-id-btn').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyToClipboard(b.getAttribute('data-id'), 'Copied Marketplace UUID!');
     });
-  }, 60000);
+  });
+
+  openModal(modal);
 }
 
 // ==========================================================================

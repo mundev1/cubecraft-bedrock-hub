@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cubecraft.db')
 SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bedrock_leaderboards_snapshot.json')
+MARKETPLACE_SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bedrock_marketplace_snapshot.json')
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -157,6 +158,7 @@ def init_db(reset=False):
         cursor.execute('DROP TABLE IF EXISTS leaderboards')
         cursor.execute('DROP TABLE IF EXISTS players')
         cursor.execute('DROP TABLE IF EXISTS bundles')
+        cursor.execute('DROP TABLE IF EXISTS marketplace')
         cursor.execute('DROP TABLE IF EXISTS clips')
         cursor.execute('DROP TABLE IF EXISTS encounters')
 
@@ -184,6 +186,23 @@ def init_db(reset=False):
         raw_name TEXT,
         FOREIGN KEY(player_gamertag) REFERENCES players(gamertag)
     )''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS marketplace (
+        id TEXT PRIMARY KEY,
+        search_name TEXT,
+        name TEXT,
+        description TEXT,
+        creation_date TEXT,
+        thumbnail TEXT,
+        rating REAL,
+        price INTEGER DEFAULT 0,
+        available INTEGER DEFAULT 1
+    )''')
+
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_marketplace_available ON marketplace(available)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_marketplace_rating ON marketplace(rating)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_marketplace_price ON marketplace(price)')
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS bundles (
@@ -449,107 +468,75 @@ def seed_custom_players():
     conn.commit()
     conn.close()
 
-def seed_bundles_and_clips():
-    """Seeds authentic shop bundles and playable community clips."""
+def sync_cubecraft_marketplace():
+    """
+    Fetches the complete official CubeCraft Bedrock Marketplace catalog (900+ items)
+    from https://api.cc-data.ru/bedrock/marketplace or local snapshot and inserts
+    authentic data into SQLite. Stores ONLY real fields from the API.
+    """
+    print("Fetching authentic CubeCraft Bedrock Marketplace items...")
+    data = None
+    try:
+        req = urllib.request.Request(
+            'https://api.cc-data.ru/bedrock/marketplace',
+            headers={'User-Agent': 'Mozilla/5.0'}
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            print(f"Successfully fetched {len(data)} marketplace items from api.cc-data.ru!")
+            try:
+                with open(MARKETPLACE_SNAPSHOT_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Network request to api.cc-data.ru/bedrock/marketplace: {e}")
+        if os.path.exists(MARKETPLACE_SNAPSHOT_PATH):
+            with open(MARKETPLACE_SNAPSHOT_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+    if not data:
+        print("No marketplace data available.")
+        return 0
+
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute('DELETE FROM bundles')
-    now = datetime.utcnow()
-    exp_cyber = (now + timedelta(days=6, hours=14)).isoformat() + "Z"
-    exp_frost = (now + timedelta(days=13, hours=8)).isoformat() + "Z"
-    exp_solar = (now + timedelta(days=20, hours=22)).isoformat() + "Z"
-    exp_arcade = (now + timedelta(days=2, hours=4)).isoformat() + "Z"
+    items_synced = 0
+    for item in data:
+        item_id = item.get('id')
+        if not item_id:
+            continue
+        search_name = item.get('searchName', '')
+        name = item.get('name', '')
+        description = item.get('description', '')
+        creation_date = item.get('creationDate', '')
+        thumbnail = item.get('thumbnail', '')
+        rating = item.get('rating')
+        if rating is not None:
+            try:
+                rating = float(rating)
+            except (ValueError, TypeError):
+                rating = None
+        price = int(item.get('price', 0))
+        available = 1 if item.get('available') else 0
 
-    bundles_data = [
-        (
-            "cyber-samurai-2026",
-            "Cyber Samurai Void Bundle",
-            "Neon katanas, holographic cage, and digitized egg destruction.",
-            "Transform your Bedrock matches with futuristic neon aesthetic. Includes an exclusive animated Cyber Egg skin, the Holographic Dojo cage, and digital glitch kill effects.",
-            1340,
-            1800,
-            "Mythic",
-            "Featured Deal",
-            "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=800&q=80",
-            json.dumps([
-                {"name": "Holo-Dojo Cage", "type": "Cage Skin", "rarity": "Mythic", "desc": "Glowing neon pillars with floating cherry blossoms and cybernetic sound effects."},
-                {"name": "Cyber Core Egg", "type": "Egg Skin", "rarity": "Legendary", "desc": "Pulsating matrix egg that emits circuit particles when defended."},
-                {"name": "Glitch Void Kill Effect", "type": "Kill Effect", "rarity": "Legendary", "desc": "Vanishes fallen foes into a pixelated matrix rupture."},
-                {"name": "Neon Blade Arrow Trail", "type": "Arrow Trail", "rarity": "Epic", "desc": "Fires cybernetic laser arrows with teal trail flare."},
-                {"name": "Ronin Prefix Title", "type": "Chat Prefix", "rarity": "Rare", "desc": "Exclusive [Ronin] cyan chat badge."}
-            ]),
-            "2026-11-01",
-            exp_cyber,
-            1
-        ),
-        (
-            "frostbite-crystal-pack",
-            "Frostbite Crystal Core",
-            "Glacial cages, cryo egg shells, and howling blizzard win fanfare.",
-            "Cool down intense EggWars matches with the Frostbite collection. Features frosted crystalline structures and sub-zero victory animations.",
-            990,
-            1340,
-            "Legendary",
-            "New Arrival",
-            "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80",
-            json.dumps([
-                {"name": "Glacial Spire Cage", "type": "Cage Skin", "rarity": "Legendary", "desc": "Encased in translucent icicles that shatter upon game start."},
-                {"name": "Sub-Zero Egg", "type": "Egg Skin", "rarity": "Epic", "desc": "Permafrost coated egg with cold vapor mist."},
-                {"name": "Blizzard Win Effect", "type": "Win Effect", "rarity": "Legendary", "desc": "Freezes the entire podium island in ice blocks with Aurora Borealis skybox."},
-                {"name": "Frost Nova Gravestone", "type": "Gravestone", "rarity": "Rare", "desc": "Leaves an icy crystalline tombstone on defeat."}
-            ]),
-            "2026-11-05",
-            exp_frost,
-            1
-        ),
-        (
-            "solar-flare-eggwars",
-            "Solar Flare Celestial Pack",
-            "Harness cosmic supernova energy across the Bedrock arena.",
-            "A celestial pack containing solar flare particle effects, the Sun-Forge cage, and meteorite egg protection effects.",
-            830,
-            1100,
-            "Epic",
-            "Popular",
-            "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-            json.dumps([
-                {"name": "Sun-Forge Cage", "type": "Cage Skin", "rarity": "Epic", "desc": "Solar ring cage orbiting with golden plasma flares."},
-                {"name": "Supernova Egg Skin", "type": "Egg Skin", "rarity": "Epic", "desc": "Miniature sun with glowing corona flares."},
-                {"name": "Solar Beam Kill Effect", "type": "Kill Effect", "rarity": "Rare", "desc": "Strikes opponents with an orbital ray of light upon defeat."}
-            ]),
-            "2026-10-25",
-            exp_solar,
-            0
-        ),
-        (
-            "retro-arcade-pixel",
-            "8-Bit Retro Arcade Bundle",
-            "Chiptune soundbites, pixelated cages, and retro victory music.",
-            "Throw it back to vintage arcade classics. Features chiptune elimination noises and 8-bit voxel egg cosmetics.",
-            660,
-            900,
-            "Rare",
-            "Last Chance",
-            "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80",
-            json.dumps([
-                {"name": "Arcade Cabinet Cage", "type": "Cage Skin", "rarity": "Rare", "desc": "Spawn inside an authentic retro arcade machine with joystick animations."},
-                {"name": "Pixel Sprite Egg", "type": "Egg Skin", "rarity": "Rare", "desc": "Voxelized 8-bit heart sprite egg."},
-                {"name": "Insert Coin Kill Effect", "type": "Kill Effect", "rarity": "Rare", "desc": "Drops floating pixel coins whenever you eliminate a foe."}
-            ]),
-            "2026-10-15",
-            exp_arcade,
-            0
-        )
-    ]
+        cursor.execute('''
+            INSERT OR REPLACE INTO marketplace (
+                id, search_name, name, description, creation_date, thumbnail, rating, price, available
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (item_id, search_name, name, description, creation_date, thumbnail, rating, price, available))
+        items_synced += 1
 
-    cursor.executemany('''
-        INSERT OR REPLACE INTO bundles (
-            id, title, tagline, description, price_minecoins, original_price,
-            rarity, badge, banner_img, items_json, release_date, expiry_date, is_featured
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', bundles_data)
+    conn.commit()
+    conn.close()
+    print(f"Synchronized {items_synced} authentic Bedrock marketplace items!")
+    return items_synced
 
+def seed_clips():
+    """Seeds playable community clips."""
+    conn = get_db()
+    cursor = conn.cursor()
     cursor.execute('SELECT COUNT(*) FROM clips')
     if cursor.fetchone()[0] == 0:
         clips_data = [
@@ -605,13 +592,18 @@ def seed_bundles_and_clips():
                 duration, views, upvotes, is_community, source_type, description, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', clips_data)
-
     conn.commit()
     conn.close()
+
+def seed_bundles_and_clips():
+    """Backward compatibility wrapper: syncs marketplace and seeds clips."""
+    sync_cubecraft_marketplace()
+    seed_clips()
 
 if __name__ == '__main__':
     init_db(reset=True)
     sync_cubecraft_leaderboards()
     seed_custom_players()
-    seed_bundles_and_clips()
+    sync_cubecraft_marketplace()
+    seed_clips()
     print("Database re-initialized with 100% authentic CubeCraft Bedrock API data!")
