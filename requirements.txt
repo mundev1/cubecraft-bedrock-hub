@@ -3,3 +3,5 @@ Flask>=2.3.0
 discord.py>=2.3.0
 python-dotenv>=1.0.0
 requests>=2.31.0
+discord-interactions>=0.4.0
+pynacl>=1.5.0

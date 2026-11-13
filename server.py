@@ -1057,6 +1057,13 @@ def handle_send_discord_webhook():
     status_code = 200 if result.get('success') else 400
     return jsonify(result), status_code
 
+@app.route('/api/interactions', methods=['POST'])
+def discord_interactions_webhook():
+    """Receives and verifies Discord HTTP Slash Command interactions on Vercel."""
+    from discord_interactions_handler import handle_discord_interaction
+    res_data, status_code = handle_discord_interaction(request.get_data(), request.headers)
+    return jsonify(res_data), status_code
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 7860))
     debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
