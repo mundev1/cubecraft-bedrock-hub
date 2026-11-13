@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: cubecraft-bedrock-hub
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: FLASK_DEBUG
+        value: "false"
