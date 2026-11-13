@@ -51,7 +51,7 @@ def handle_discord_interaction(raw_body: bytes, headers: dict):
         data = body.get("data", {})
         cmd_name = data.get("name", "").lower()
         options_list = data.get("options", [])
-        options = {opt.get("name"): opt.get("value") for opt in options_list if opt.get("name")}
+        options = {str(opt.get("name")).lower(): opt.get("value") for opt in options_list if opt.get("name")}
 
         embed = None
 
@@ -111,16 +111,31 @@ def handle_discord_interaction(raw_body: bytes, headers: dict):
                     SELECT l.player_gamertag, l.game, l.mode, l.points, l.rank, p.rank_title, p.avatar_color
                     FROM leaderboards l
                     LEFT JOIN players p ON LOWER(l.player_gamertag) = LOWER(p.gamertag)
-                    WHERE LOWER(l.game) = LOWER(?) AND LOWER(l.mode) = LOWER(?)
+                    WHERE LOWER(l.game) LIKE LOWER(?) AND (LOWER(l.mode) = LOWER(?) OR LOWER(l.mode) LIKE LOWER(?))
                     ORDER BY l.rank ASC, l.points DESC
                     LIMIT 10
-                """, (game, mode))
+                """, (f"%{game}%", mode, f"%{mode}%"))
                 rows = [dict(r) for r in cursor.fetchall()]
+
+                # Fallback to any active mode for this game if requested mode is not available
+                if not rows:
+                    cursor.execute("""
+                        SELECT l.player_gamertag, l.game, l.mode, l.points, l.rank, p.rank_title, p.avatar_color
+                        FROM leaderboards l
+                        LEFT JOIN players p ON LOWER(l.player_gamertag) = LOWER(p.gamertag)
+                        WHERE LOWER(l.game) LIKE LOWER(?)
+                        ORDER BY l.rank ASC, l.points DESC
+                        LIMIT 10
+                    """, (f"%{game}%",))
+                    rows = [dict(r) for r in cursor.fetchall()]
+
                 conn.close()
                 if rows:
+                    actual_game = rows[0].get("game", game)
+                    actual_mode = rows[0].get("mode", mode)
                     rank1 = rows[0]
                     rank2 = rows[1] if len(rows) > 1 else None
-                    champ = build_leaderboard_champion_discord_embed(game, mode, rank1, rank2)
+                    champ = build_leaderboard_champion_discord_embed(actual_game, actual_mode, rank1, rank2)
                     embed = champ["embed"]
                     ladder = []
                     for r in rows:
