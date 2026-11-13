@@ -1,3 +1,13 @@
+---
+title: CubeCraft Bedrock Community Hub
+emoji: 🎮
+colorFrom: indigo
+colorTo: cyan
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🧊 CubeCraft Bedrock Community Hub
 
 A minimalist, dark-themed community web platform designed specifically for the Minecraft Bedrock community playing on the CubeCraft network (`play.cubecraft.net`).

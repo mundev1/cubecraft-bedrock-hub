@@ -5,6 +5,8 @@ echo "=================================================="
 echo "🚀 Starting CubeCraft Bedrock Hub & Discord Bot"
 echo "=================================================="
 
+PORT=${PORT:-7860}
+
 # 1. Start Discord Bot in the background (if token configured)
 if [ -n "$DISCORD_BOT_TOKEN" ]; then
     echo "🤖 Starting CubeCraft Bedrock Discord Bot..."
