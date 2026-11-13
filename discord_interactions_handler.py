@@ -249,4 +249,74 @@ def handle_discord_interaction(raw_body: bytes, headers: dict):
             }
         }, 200
 
+    # 3. Handle Autocomplete (APPLICATION_COMMAND_AUTOCOMPLETE = 4)
+    if interaction_type in (getattr(InteractionType, "APPLICATION_COMMAND_AUTOCOMPLETE", 4), 4):
+        data = body.get("data", {})
+        options_list = data.get("options", [])
+
+        def find_focused(opts):
+            for o in opts:
+                if o.get("focused"):
+                    return o
+                if "options" in o:
+                    res = find_focused(o["options"])
+                    if res:
+                        return res
+            return None
+
+        focused = find_focused(options_list)
+        choices = []
+
+        if focused:
+            opt_name = focused.get("name", "")
+            current = str(focused.get("value", "")).strip().lower()
+
+            if opt_name == "game":
+                all_games = [
+                    "EggWars", "SkyWars", "Lucky Islands", "Survival Games",
+                    "BlockWars", "BedWars", "Minerware", "Parkour Classic",
+                    "Battle Arena", "Line Dash"
+                ]
+                matched = [g for g in all_games if current in g.lower()] if current else all_games
+                choices = [{"name": g, "value": g} for g in matched[:25]]
+
+            elif opt_name == "mode":
+                all_modes = ["Solo", "Teams", "Duos", "Squads", "Mega", "Chaos", "Duels"]
+                matched = [m for m in all_modes if current in m.lower()] if current else all_modes
+                choices = [{"name": m, "value": m} for m in matched[:25]]
+
+            elif opt_name == "map_name":
+                all_maps = [
+                    {"name": "Tea Party (EggWars Solo/Duos)", "value": "eggwars_tea_party"},
+                    {"name": "Dwarven (EggWars Solo/Duos)", "value": "eggwars_dwarven"},
+                    {"name": "Atlantis (EggWars Teams)", "value": "eggwars_atlantis"},
+                    {"name": "Toys (EggWars Teams)", "value": "eggwars_toys"},
+                    {"name": "Trees (SkyWars Solo)", "value": "skywars_trees"},
+                    {"name": "Rainbow (SkyWars Solo/Teams)", "value": "skywars_rainbow"},
+                    {"name": "Magic (SkyWars Teams)", "value": "skywars_magic"}
+                ]
+                matched = [m for m in all_maps if current in m["name"].lower() or current in m["value"].lower()] if current else all_maps
+                choices = matched[:25]
+
+            elif opt_name == "gamertag":
+                try:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    if current:
+                        cursor.execute("SELECT gamertag FROM players WHERE LOWER(gamertag) LIKE ? LIMIT 10", (f"{current}%",))
+                    else:
+                        cursor.execute("SELECT gamertag FROM players ORDER BY total_points DESC LIMIT 10")
+                    rows = cursor.fetchall()
+                    conn.close()
+                    choices = [{"name": r[0], "value": r[0]} for r in rows]
+                except Exception:
+                    choices = []
+
+        return {
+            "type": getattr(InteractionResponseType, "APPLICATION_COMMAND_AUTOCOMPLETE_RESULT", 8),
+            "data": {
+                "choices": choices
+            }
+        }, 200
+
     return {"error": "Unsupported interaction type"}, 400

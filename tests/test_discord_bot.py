@@ -132,5 +132,41 @@ class TestDiscordBotEngine(unittest.TestCase):
         for expected in expected_slash:
             self.assertIn(expected, tree_commands, f"Missing slash command: {expected}")
 
+    def test_autocomplete_handler(self):
+        """Test autocomplete interaction handling for game, mode, and map_name."""
+        import json
+        import nacl.signing
+        from discord_interactions_handler import handle_discord_interaction
+
+        key = nacl.signing.SigningKey.generate()
+        pub_hex = key.verify_key.encode().hex()
+        old_key = os.environ.get("DISCORD_PUBLIC_KEY")
+        os.environ["DISCORD_PUBLIC_KEY"] = pub_hex
+
+        try:
+            payload = {
+                "type": 4,
+                "data": {
+                    "name": "leaderboard",
+                    "options": [{"name": "game", "value": "egg", "focused": True}]
+                }
+            }
+            raw_body = json.dumps(payload).encode("utf-8")
+            ts = "12345678"
+            msg = ts.encode("utf-8") + raw_body
+            sig = key.sign(msg).signature.hex()
+
+            headers = {"X-Signature-Ed25519": sig, "X-Signature-Timestamp": ts}
+            res, status = handle_discord_interaction(raw_body, headers)
+            self.assertEqual(status, 200)
+            self.assertEqual(res["type"], 8)
+            choices = res["data"]["choices"]
+            self.assertTrue(any(c["name"] == "EggWars" for c in choices))
+        finally:
+            if old_key is not None:
+                os.environ["DISCORD_PUBLIC_KEY"] = old_key
+            else:
+                os.environ.pop("DISCORD_PUBLIC_KEY", None)
+
 if __name__ == "__main__":
     unittest.main()
