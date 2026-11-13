@@ -1079,11 +1079,33 @@ def discord_interactions_webhook():
     """Receives and verifies Discord HTTP Slash Command interactions on Vercel."""
     if request.method == 'GET':
         public_key = os.getenv("DISCORD_PUBLIC_KEY", "").strip()
+        import database
+        db_info = {}
+        try:
+            conn = database.get_db()
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM leaderboards")
+            lb_count = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM players")
+            pl_count = c.fetchone()[0]
+            conn.close()
+            db_info = {
+                "db_path": database.DB_PATH,
+                "db_exists": os.path.exists(database.DB_PATH),
+                "leaderboards": lb_count,
+                "players": pl_count
+            }
+        except Exception as e:
+            import traceback
+            db_info = {"error": str(e), "trace": traceback.format_exc()}
+
         return jsonify({
             "status": "online",
             "endpoint": "/api/interactions",
             "public_key_configured": bool(public_key),
-            "instructions": "Paste this full URL into Discord Developer Portal -> General Information -> Interactions Endpoint URL: https://cubecraft-bedrock-hub.vercel.app/api/interactions"
+            "db_info": db_info,
+            "cwd": os.getcwd(),
+            "files_here": os.listdir('.')[:20]
         }), 200
 
     from discord_interactions_handler import handle_discord_interaction
