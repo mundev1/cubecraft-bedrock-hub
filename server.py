@@ -1059,5 +1059,6 @@ def handle_send_discord_webhook():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5055))
-    print(f"CubeCraft Bedrock Community Hub starting on http://localhost:{port}")
-    app.run(host='0.0.0.0', port=port, debug=True)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    print(f"CubeCraft Bedrock Community Hub starting on http://0.0.0.0:{port} (debug={debug_mode})")
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
