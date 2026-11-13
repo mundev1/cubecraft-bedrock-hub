@@ -39,8 +39,8 @@ def build_player_discord_embed(player_data, encounters=None):
     """
     gamertag = player_data.get('gamertag', 'Player')
     raw_name = player_data.get('raw_name') or gamertag
-    rank_title = player_data.get('rank_title') or 'Bedrock Player'
-    bio = player_data.get('bio') or 'Discovered in Bedrock lobby.'
+    rank_title = player_data.get('rank_title') or 'Bedrock Competitor'
+    bio = player_data.get('bio') or 'Active competitor on CubeCraft Bedrock Edition.'
     color_int = get_rank_embed_color(rank_title)
     avatar_url = f"https://mc-heads.net/avatar/{gamertag}/128"
 
@@ -58,42 +58,49 @@ def build_player_discord_embed(player_data, encounters=None):
         tot = len(encounters)
         rep_score = max(10, min(100, int((pos * 100 + neu * 75 + neg * 20) / tot)))
 
+    stars = "★★★★★" if rep_score >= 90 else ("★★★★☆" if rep_score >= 75 else ("★★★☆☆" if rep_score >= 50 else "★★☆☆☆"))
+    rep_status = "🟢 Exemplary" if rep_score >= 85 else ("🟡 Respected" if rep_score >= 65 else ("🟠 Mixed" if rep_score >= 40 else "🔴 Caution"))
+
     fields = [
         {
             "name": "🎖️ Bedrock Rank",
-            "value": f"`{rank_title}`",
+            "value": f"**`{rank_title}`**",
             "inline": True
         },
         {
-            "name": "🌟 Community Rep",
-            "value": f"`{rep_score}% Positive` ({enc_count} reviews)",
+            "name": "🛡️ Community Rep",
+            "value": f"**`{rep_score}%`** • {stars}\n*{rep_status} ({enc_count} reviews)*",
             "inline": True
         },
         {
             "name": "🎮 Platform",
-            "value": "`Minecraft Bedrock Edition`",
+            "value": "`Minecraft Bedrock`\n*play.cubecraft.net*",
             "inline": True
         }
     ]
 
     if top_entry:
         fields.append({
-            "name": f"🏆 Peak Standing: {top_entry.get('game', 'Mode')}",
-            "value": f"**Rank #{top_entry.get('rank', '?')}** in *{top_entry.get('mode', 'General')}*\nPoints: **{top_entry.get('points', 0):,}**",
+            "name": f"🏆 Peak Standing — {top_entry.get('game', 'Mode')}",
+            "value": f"🏅 **Rank #{top_entry.get('rank', '?')}** in *{top_entry.get('mode', 'General')}*\n⭐ Score: **`{top_entry.get('points', 0):,} pts`**",
             "inline": False
         })
 
     if len(leaderboards) > 1:
-        other_modes = ", ".join([f"{e['game']} ({e['mode']})" for e in leaderboards[1:4]])
+        other_lines = []
+        for e in leaderboards[1:5]:
+            r_num = e.get('rank', '?')
+            medal = "🥇" if r_num == 1 else ("🥈" if r_num == 2 else ("🥉" if r_num == 3 else f"`#{r_num:>2}`"))
+            other_lines.append(f"▫️ {medal} **{e.get('game')}** ({e.get('mode')}) — `{e.get('points', 0):,} pts`")
         fields.append({
-            "name": f"📊 Other Ranked Modes ({len(leaderboards)} total)",
-            "value": other_modes,
+            "name": f"📊 Other Ranked Modes ({len(leaderboards)} total on ladder)",
+            "value": "\n".join(other_lines),
             "inline": False
         })
 
     embed = {
         "title": f"🎮 Bedrock Competitor Profile — {gamertag}",
-        "description": f"> *\"{bio}\"*\n\nVerified competitor profile on the **CubeCraft Bedrock Community Hub**.",
+        "description": f"> *\"{bio}\"*\n\nVerified competitor dossier on the **CubeCraft Bedrock Community Hub**.",
         "color": color_int,
         "thumbnail": {
             "url": avatar_url
@@ -114,12 +121,12 @@ def build_player_discord_embed(player_data, encounters=None):
 
     # Ready-to-paste markdown for chat
     markdown_text = (
-        f"__**🎮 CUBECRAFT BEDROCK PLAYER PROFILE**__\n"
+        f"__**🎮 CUBECRAFT BEDROCK PLAYER DOSSIER**__\n"
         f"**Gamertag:** `{gamertag}`\n"
-        f"**Rank:** `{rank_title}` | **Reputation:** `{rep_score}% Positive` ({enc_count} encounters)\n"
+        f"**Rank:** `{rank_title}` | **Reputation:** `{rep_score}% Positive` {stars} ({enc_count} encounters)\n"
     )
     if top_entry:
-        markdown_text += f"**Best Rank:** #{top_entry.get('rank')} in **{top_entry.get('game')} {top_entry.get('mode')}** ({top_entry.get('points', 0):,} pts)\n"
+        markdown_text += f"**Peak Standing:** #{top_entry.get('rank')} in **{top_entry.get('game')} {top_entry.get('mode')}** ({top_entry.get('points', 0):,} pts)\n"
     markdown_text += f"> *\"{bio}\"*\n"
     markdown_text += f"🔗 Server: `play.cubecraft.net` (Port 19132)"
 
@@ -149,41 +156,41 @@ def build_leaderboard_champion_discord_embed(game, mode, rank1_entry, rank2_entr
     fields = [
         {
             "name": "👑 Reigning #1 Champion",
-            "value": f"**`{champ_name}`**",
+            "value": f"🏆 **`{champ_name}`**",
             "inline": True
         },
         {
             "name": "🎯 Champion Score",
-            "value": f"**`{points:,} points`**",
+            "value": f"⭐ **`{points:,} points`**",
             "inline": True
         },
         {
             "name": "📈 Lead Over #2",
-            "value": f"`{lead_str}`",
+            "value": f"🔥 **`{lead_str}`**",
             "inline": True
         },
         {
             "name": "🌐 Arena & Game Mode",
-            "value": f"**{game}** — *{mode}*",
-            "inline": False
+            "value": f"🎮 **{game}** — *{mode}*",
+            "inline": True
         },
         {
             "name": "🕹️ Server Address",
-            "value": "`play.cubecraft.net` (Bedrock Port: `19132`)",
-            "inline": False
+            "value": "`play.cubecraft.net:19132`",
+            "inline": True
         }
     ]
 
     embed = {
         "title": f"👑 #1 Leaderboard Champion — {game} ({mode})",
-        "description": f"Congratulations to **{champ_name}**, the official Rank #1 holder on CubeCraft Bedrock!",
+        "description": f"Official reigning Rank #1 holder across all Bedrock competitors in **{game} ({mode})**.",
         "color": 16503076, # Gold #fbbf24
         "thumbnail": {
             "url": avatar_url
         },
         "fields": fields,
         "footer": {
-            "text": "Official CubeCraft Bedrock Leaderboard Telemetry",
+            "text": "Official CubeCraft Bedrock Leaderboard Telemetry • play.cubecraft.net",
             "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
         },
         "timestamp": datetime.utcnow().isoformat() + "+00:00"
@@ -218,7 +225,7 @@ def build_server_status_discord_embed(online_count, peak_window="16:00 - 21:00 U
     fields = [
         {
             "name": "🟢 Server Status",
-            "value": "`ONLINE` (play.cubecraft.net:19132)",
+            "value": "`ONLINE`",
             "inline": True
         },
         {
@@ -233,19 +240,24 @@ def build_server_status_discord_embed(online_count, peak_window="16:00 - 21:00 U
         },
         {
             "name": "🔥 Peak Matchmaking Window",
-            "value": f"**{peak_window}**\n*Instant queues, 50v50 BlockWars, intense duels.*",
+            "value": f"⏰ **`{peak_window}`**\n*Instant queues, 50v50 BlockWars, high-intensity duels.*",
             "inline": False
         },
         {
             "name": "🌙 Best Grinding Window (Off-Peak)",
-            "value": f"**{offpeak_window}**\n*Smoother win streaks, quest completion, less competition.*",
+            "value": f"⏰ **`{offpeak_window}`**\n*Smoother win streaks, daily quest completion, less competition.*",
+            "inline": False
+        },
+        {
+            "name": "🌐 Direct Connect",
+            "value": "`play.cubecraft.net` (Bedrock Port: `19132`)",
             "inline": False
         }
     ]
 
     embed = {
         "title": "⚡ CubeCraft Bedrock Server Status & Grinding Schedule",
-        "description": "Live network telemetry and optimal playtime analysis for competitive Minecraft Bedrock players.",
+        "description": "Real-time network telemetry and optimal playtime analysis for competitive Minecraft Bedrock players.",
         "color": 1096065, # Emerald #10b981
         "thumbnail": {
             "url": "https://mc-heads.net/avatar/CubeCraft/128"
@@ -293,7 +305,7 @@ def build_map_tactics_discord_embed(map_data):
     team_size = map_data.get('team_size', 2)
 
     bridging = map_data.get('bridging_distances', [])
-    b_text = "\n".join([f"• **{b['target']}:** `{b['distance_blocks']} blk` (⚡ {b['jump_bridge_sec']}s Bedrock sprint)" for b in bridging[:3]])
+    b_text = "\n".join([f"▫️ **{b['target']}:** `{b['distance_blocks']} blocks` (⏱️ `{b['jump_bridge_sec']}s` sprint bridge)" for b in bridging[:3]])
 
     fields = [
         {
@@ -303,7 +315,7 @@ def build_map_tactics_discord_embed(map_data):
         },
         {
             "name": "👥 Team Setup",
-            "value": f"`{teams_count} Teams (Size {team_size})`",
+            "value": f"`{teams_count} Teams of {team_size}`",
             "inline": True
         },
         {
@@ -317,8 +329,8 @@ def build_map_tactics_discord_embed(map_data):
             "inline": False
         },
         {
-            "name": "🚀 Opening Rush Tactic",
-            "value": f"> {map_data.get('tactics_rush', 'Rush neighbor early.')[:200]}...",
+            "name": "🚀 Optimal Opening Rush Meta",
+            "value": f"> {map_data.get('tactics_rush', 'Rush neighbor early.')[:250]}...",
             "inline": False
         }
     ]
@@ -332,7 +344,7 @@ def build_map_tactics_discord_embed(map_data):
         },
         "fields": fields,
         "footer": {
-            "text": "CubeCraft Bedrock Mode & Maps Strategy Guide",
+            "text": "CubeCraft Bedrock Map Strategy Guide • play.cubecraft.net",
             "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
         },
         "timestamp": datetime.utcnow().isoformat() + "+00:00"

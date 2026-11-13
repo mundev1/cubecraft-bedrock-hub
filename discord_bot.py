@@ -496,7 +496,7 @@ async def slash_help(interaction: discord.Interaction):
     embed.add_field(
         name="⚡ Server Connection",
         value="**Server IP**: `play.cubecraft.net` (Bedrock Port: `19132`)\n"
-              "**Web Hub**: `http://localhost:5055`",
+              "**Platform**: CubeCraft Bedrock Community Hub",
         inline=False
     )
 
@@ -542,9 +542,10 @@ async def cmd_leaderboard(ctx, game: Optional[str] = "EggWars", mode: Optional[s
 
     ladder_lines = []
     for r in rows:
-        medal = "🥇" if r["rank"] == 1 else ("🥈" if r["rank"] == 2 else ("🥉" if r["rank"] == 3 else f"`#{r['rank']}`"))
+        rnk = r.get("rank", 0)
+        medal = "🥇" if rnk == 1 else ("🥈" if rnk == 2 else ("🥉" if rnk == 3 else f"` #{rnk:>2} `"))
         pts = f"{r['points']:,}"
-        ladder_lines.append(f"{medal} **{r['player_gamertag']}** — `{pts} pts`")
+        ladder_lines.append(f"{medal} **{r['player_gamertag']}** ── `{pts} pts`")
 
     embed.add_field(name=f"🏆 Top {len(rows)} Standings", value="\n".join(ladder_lines), inline=False)
     await ctx.send(embed=embed)
