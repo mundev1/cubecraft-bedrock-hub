@@ -320,20 +320,22 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = json.loads(res.data)
         self.assertTrue(data['success'])
-        self.assertEqual(data['count'], 5)
+        self.assertEqual(data['count'], 7)
 
         names = [m['name'] for m in data['maps']]
         self.assertIn('Tea Party', names)
         self.assertIn('Dwarven', names)
         self.assertIn('Atlantis', names)
+        self.assertIn('Toys', names)
         self.assertIn('Trees', names)
         self.assertIn('Rainbow', names)
+        self.assertIn('Magic', names)
 
         # 2. Filter by EggWars
         res_egg = self.app.get('/api/strategy/maps?game=EggWars')
         self.assertEqual(res_egg.status_code, 200)
         data_egg = json.loads(res_egg.data)
-        self.assertEqual(data_egg['count'], 3)
+        self.assertEqual(data_egg['count'], 4)
         for m in data_egg['maps']:
             self.assertEqual(m['game'], 'EggWars')
 
@@ -341,7 +343,7 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         res_sky = self.app.get('/api/strategy/maps?game=SkyWars')
         self.assertEqual(res_sky.status_code, 200)
         data_sky = json.loads(res_sky.data)
-        self.assertEqual(data_sky['count'], 2)
+        self.assertEqual(data_sky['count'], 3)
         for m in data_sky['maps']:
             self.assertEqual(m['game'], 'SkyWars')
 
@@ -360,10 +362,54 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         self.assertIn('generator_breakdown', m)
         self.assertIn('bridging_distances', m)
         self.assertGreater(len(m['bridging_distances']), 0)
+        self.assertIn('schematic_2d', m)
+        self.assertIsNotNone(m['schematic_2d'])
 
         # 2. Non-existent map
         res_404 = self.app.get('/api/strategy/maps/unknown_map_xyz')
         self.assertEqual(res_404.status_code, 404)
+
+    def test_strategy_2d_schematics_validity(self):
+        res = self.app.get('/api/strategy/overview')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertEqual(len(data['maps']), 7)
+
+        for m in data['maps']:
+            self.assertIn('schematic_2d', m, f"Map {m['map_id']} missing schematic_2d")
+            s = m['schematic_2d']
+            self.assertIsNotNone(s)
+            self.assertIn('islands', s)
+            self.assertIn('bridging_paths', s)
+            self.assertGreater(len(s['islands']), 0)
+            self.assertGreater(len(s['bridging_paths']), 0)
+
+            # Check island coordinates
+            for isl in s['islands']:
+                self.assertIn('id', isl)
+                self.assertIn('x', isl)
+                self.assertIn('y', isl)
+                self.assertIn('radius', isl)
+                self.assertTrue(0 <= isl['x'] <= 800)
+                self.assertTrue(0 <= isl['y'] <= 800)
+
+            # Check bridging paths
+            for path in s['bridging_paths']:
+                self.assertIn('from_id', path)
+                self.assertIn('to_id', path)
+                self.assertIn('distance_blocks', path)
+                self.assertGreater(path['distance_blocks'], 0)
+                self.assertIn('jump_bridge_sec', path)
+                self.assertIn('sneak_bridge_sec', path)
+
+        # Dedicated endpoint check
+        res_single = self.app.get('/api/strategy/schematic/eggwars_tea_party')
+        self.assertEqual(res_single.status_code, 200)
+        data_single = json.loads(res_single.data)
+        self.assertTrue(data_single['success'])
+        self.assertEqual(data_single['map_id'], 'eggwars_tea_party')
+        self.assertIn('schematic_2d', data_single)
 
     def test_strategy_generators_authentic_rates(self):
         res = self.app.get('/api/strategy/generators')
@@ -423,7 +469,7 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         self.assertIn('maps', data)
         self.assertIn('generators', data)
         self.assertIn('bridging', data)
-        self.assertEqual(len(data['maps']), 5)
+        self.assertEqual(len(data['maps']), 7)
 
 if __name__ == '__main__':
     unittest.main()

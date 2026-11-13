@@ -887,6 +887,20 @@ def get_strategy_map_detail(map_id):
         "map": map_data
     })
 
+@app.route('/api/strategy/schematic/<map_id>', methods=['GET'])
+def get_strategy_map_schematic(map_id):
+    """Returns the top-down 2D vector schematic (islands, coordinates, rush vectors) for a map."""
+    map_data = get_map_strategy_detail(map_id)
+    if not map_data:
+        return jsonify({"success": False, "error": f"Map '{map_id}' not found"}), 404
+    return jsonify({
+        "success": True,
+        "map_id": map_id,
+        "name": map_data.get('name'),
+        "game": map_data.get('game'),
+        "schematic_2d": map_data.get('schematic_2d')
+    })
+
 @app.route('/api/strategy/generators', methods=['GET'])
 def get_strategy_generators():
     """Returns official CubeCraft Bedrock generator upgrade costs and timer parameters."""

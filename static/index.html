@@ -431,7 +431,10 @@
 
       <!-- Strategy Sub-Navigation Tabs -->
       <div class="guide-nav-bar" style="display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem; margin-bottom: 1.75rem; overflow-x: auto;">
-        <button class="guide-tab-btn active" data-guide-tab="blueprints">
+        <button class="guide-tab-btn active" data-guide-tab="visualizer">
+          🛰️ Interactive 2D Map Visualizer
+        </button>
+        <button class="guide-tab-btn" data-guide-tab="blueprints">
           🗺️ Map Blueprints & Tactics
         </button>
         <button class="guide-tab-btn" data-guide-tab="generators">
@@ -442,14 +445,123 @@
         </button>
       </div>
 
+      <!-- Tab Panel 0: Interactive 2D Map Rush Visualizer -->
+      <div id="guide-panel-visualizer" class="guide-tab-panel active">
+        
+        <!-- Visualizer Controls & Map Switcher Bar -->
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+            <div>
+              <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--accent-cyan); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.25rem;">
+                Bedrock Tactical Radar
+              </div>
+              <h3 style="font-size: 1.2rem; font-weight: 800; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span>Top-Down 2D Map Rush Visualizer</span>
+                <span id="visualizer-active-map-badge" class="badge" style="background: rgba(0,229,255,0.15); color: var(--accent-cyan);">Tea Party (EggWars)</span>
+              </h3>
+            </div>
+
+            <!-- Simulation Controls Ticker -->
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+              <div id="sim-ticker-box" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.4rem 0.8rem; display: flex; align-items: center; gap: 0.5rem;">
+                <span class="status-dot" style="background: #10b981;"></span>
+                <span style="font-size: 0.78rem; color: var(--text-muted);">Sim Timer:</span>
+                <strong id="sim-ticker-time" style="font-size: 0.92rem; color: var(--accent-cyan); font-family: monospace;">0.00s</strong>
+                <span id="sim-ticker-blocks" style="font-size: 0.75rem; color: var(--text-subtle);">(0 / 24 blk)</span>
+              </div>
+              <button class="btn btn-primary btn-sm" id="btn-start-simulation">
+                ⚡ Simulate Sprint-Rush
+              </button>
+              <button class="btn btn-outline btn-sm" id="btn-reset-simulation">
+                ↺ Reset
+              </button>
+            </div>
+          </div>
+
+          <!-- Map Selection Pill Bar -->
+          <div style="display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.85rem;" id="visualizer-map-pills">
+            <!-- Dynamically injected map pills -->
+          </div>
+
+          <!-- Vector & Layer Filters Bar -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">Vector Filter:</span>
+              <button class="filter-btn viz-path-filter active" data-path-type="all">All Vectors</button>
+              <button class="filter-btn viz-path-filter" data-path-type="neighbor">Neighbor Rushes</button>
+              <button class="filter-btn viz-path-filter" data-path-type="sub_rush">Sub-Island Diamonds</button>
+              <button class="filter-btn viz-path-filter" data-path-type="mid">Mid Island Runs</button>
+            </div>
+
+            <!-- Layer Toggles -->
+            <div style="display: flex; align-items: center; gap: 1rem; font-size: 0.8rem; color: var(--text-muted);">
+              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                <input type="checkbox" id="toggle-layer-gens" checked style="accent-color: var(--accent-cyan);">
+                <span>Generators / Chests</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                <input type="checkbox" id="toggle-layer-labels" checked style="accent-color: var(--accent-cyan);">
+                <span>Distance Badges</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                <input type="checkbox" id="toggle-layer-heatmap" style="accent-color: var(--accent-rose);">
+                <span>Danger Heatmap</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visualizer 2-Column Grid: SVG Canvas + Route Intel Inspector -->
+        <div class="visualizer-grid-layout" style="display: grid; grid-template-columns: minmax(360px, 1fr) 340px; gap: 1.5rem; align-items: start;">
+          
+          <!-- SVG Canvas Card -->
+          <div class="schematic-canvas-card" style="background: #04060a; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); position: relative; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.6); min-height: 580px; display: flex; align-items: center; justify-content: center;">
+            
+            <!-- Canvas Watermark / Compass Rose -->
+            <div style="position: absolute; top: 16px; left: 16px; font-size: 0.72rem; color: var(--text-subtle); pointer-events: none; z-index: 5; text-transform: uppercase; letter-spacing: 0.1em;">
+              <span>🧭 Top-Down Orthographic View • 800×800 Grid</span>
+            </div>
+
+            <!-- Speed Physics Badge -->
+            <div style="position: absolute; top: 16px; right: 16px; z-index: 5;">
+              <div style="display: flex; gap: 0.35rem; background: rgba(11,15,25,0.85); backdrop-filter: blur(8px); padding: 3px 6px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                <button class="sim-speed-btn active" data-speed="sprint" style="background: var(--accent-cyan); color: #000; border: none; padding: 2px 8px; border-radius: 3px; font-size: 0.72rem; font-weight: 700; cursor: pointer;">
+                  ⚡ Bedrock (5.6 bps)
+                </button>
+                <button class="sim-speed-btn" data-speed="sneak" style="background: transparent; color: var(--text-muted); border: none; padding: 2px 8px; border-radius: 3px; font-size: 0.72rem; font-weight: 600; cursor: pointer;">
+                  🚶 Sneak (1.6 bps)
+                </button>
+              </div>
+            </div>
+
+            <!-- Interactive SVG Visualizer Element -->
+            <svg id="schematic-svg" viewBox="0 0 800 800" style="width: 100%; height: 100%; max-height: 700px; display: block; user-select: none;">
+              <!-- Generated Dynamically by JavaScript -->
+            </svg>
+
+            <!-- Bottom Left Canvas Helper Hint -->
+            <div style="position: absolute; bottom: 12px; left: 16px; font-size: 0.74rem; color: var(--text-subtle); pointer-events: none; z-index: 5;">
+              💡 Click any island or rush vector to inspect tactical bridging data.
+            </div>
+          </div>
+
+          <!-- Route & Island Intel Inspector Sidebar -->
+          <div class="route-intel-panel" id="route-intel-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 1.25rem;">
+            <!-- Rendered Dynamically by JavaScript -->
+          </div>
+
+        </div>
+
+      </div>
+
       <!-- Tab Panel 1: Map Blueprints -->
-      <div id="guide-panel-blueprints" class="guide-tab-panel active">
+      <div id="guide-panel-blueprints" class="guide-tab-panel" style="display: none;">
         <!-- Filter Bar -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
           <div class="filter-group">
-            <button class="filter-btn map-filter-btn active" data-filter="all">All Maps (5)</button>
-            <button class="filter-btn map-filter-btn" data-filter="EggWars">🥚 EggWars (3)</button>
-            <button class="filter-btn map-filter-btn" data-filter="SkyWars">☁️ SkyWars (2)</button>
+            <button class="filter-btn map-filter-btn active" data-filter="all">All Maps (7)</button>
+            <button class="filter-btn map-filter-btn" data-filter="EggWars">🥚 EggWars (4)</button>
+            <button class="filter-btn map-filter-btn" data-filter="SkyWars">☁️ SkyWars (3)</button>
           </div>
           <div style="font-size: 0.82rem; color: var(--text-muted);">
             Click any map card to inspect the complete tactical rush, egg defense, and mid control blueprint.

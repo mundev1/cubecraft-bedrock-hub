@@ -45,7 +45,18 @@ const state = {
       tier: 3,
       count: 4,
       duration: 5
-    }
+    },
+    // Interactive 2D Visualizer State
+    activeVisualizerMapId: 'eggwars_tea_party',
+    selectedPathType: 'all',
+    showGens: true,
+    showLabels: true,
+    showHeatmap: false,
+    simSpeed: 'sprint',
+    selectedIslandId: null,
+    selectedPathId: null,
+    isSimulating: false,
+    simAnimationId: null
   }
 };
 
@@ -1591,6 +1602,7 @@ function openEncounterModal(gamertag = '') {
   if (inputGamertag) {
     inputGamertag.value = gamertag;
   }
+
   openModal(modal);
 }
 
@@ -1809,6 +1821,8 @@ async function loadMapsGuide(force = false) {
     renderGeneratorReference();
     updateGeneratorCalculator();
     renderBridgingBenchmarks();
+    renderVisualizerMapPills();
+    renderSchematicVisualizer(state.mapsGuide.activeVisualizerMapId);
     return;
   }
 
@@ -1824,6 +1838,9 @@ async function loadMapsGuide(force = false) {
       renderGeneratorReference();
       updateGeneratorCalculator();
       renderBridgingBenchmarks();
+      initVisualizerControls();
+      renderVisualizerMapPills();
+      renderSchematicVisualizer(state.mapsGuide.activeVisualizerMapId);
     }
   } catch (err) {
     console.error('Failed to load strategy guide overview:', err);
@@ -1918,13 +1935,18 @@ function renderMapsGrid() {
             ${genSummary}
           </div>
 
-          <div class="map-card-footer">
-            <span style="font-size: 0.8rem; color: var(--text-muted);">
+          <div class="map-card-footer" style="flex-wrap: wrap; gap: 0.5rem;">
+            <span style="font-size: 0.8rem; color: var(--text-muted); width: 100%;">
               👥 ${sanitizeHTML(m.mode_variant)}
             </span>
-            <button class="btn btn-outline btn-sm inspect-map-btn" data-map-id="${sanitizeHTML(m.map_id)}" style="border-color: var(--accent-cyan); color: var(--accent-cyan);">
-              Blueprint & Tactics ➔
-            </button>
+            <div style="display: flex; gap: 0.4rem; width: 100%;">
+              <button class="btn btn-outline btn-sm inspect-map-btn" data-map-id="${sanitizeHTML(m.map_id)}" style="border-color: var(--accent-cyan); color: var(--accent-cyan); flex: 1;">
+                Tactics ➔
+              </button>
+              <button class="btn btn-primary btn-sm open-visualizer-btn" data-map-id="${sanitizeHTML(m.map_id)}" style="flex: 1.2;">
+                🛰️ 2D Visualizer
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1937,6 +1959,14 @@ function renderMapsGrid() {
       e.stopPropagation();
       const mapId = btn.getAttribute('data-map-id');
       openMapModal(mapId);
+    });
+  });
+
+  grid.querySelectorAll('.open-visualizer-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const mapId = btn.getAttribute('data-map-id');
+      switchToVisualizer(mapId);
     });
   });
 
@@ -2022,6 +2052,11 @@ function openMapModal(mapId) {
     <div style="position: relative; height: 180px; border-radius: var(--radius-md); overflow: hidden; margin-bottom: 1.5rem; background: #000;">
       <img src="${sanitizeHTML(map.thumbnail_url)}" alt="${sanitizeHTML(map.name)}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.75;">
       <div style="position: absolute; inset: 0; background: linear-gradient(0deg, rgba(6,8,13,0.95) 0%, rgba(6,8,13,0.3) 100%);"></div>
+      
+      <button class="btn btn-primary btn-sm modal-open-visualizer-btn" style="position: absolute; top: 16px; right: 20px; z-index: 3;">
+        🛰️ Launch 2D Rush Visualizer ➔
+      </button>
+
       <div style="position: absolute; bottom: 16px; left: 20px; right: 20px; z-index: 2;">
         <div style="display: flex; gap: 0.5rem; margin-bottom: 0.3rem;">
           <span class="badge" style="background: rgba(0,229,255,0.2); color: var(--accent-cyan);">${sanitizeHTML(map.game)}</span>
@@ -2098,6 +2133,15 @@ function openMapModal(mapId) {
       </div>
     </div>
   `;
+
+  // Wire modal visualizer button
+  const modalVizBtn = bodyEl.querySelector('.modal-open-visualizer-btn');
+  if (modalVizBtn) {
+    modalVizBtn.addEventListener('click', () => {
+      closeModal(modal);
+      switchToVisualizer(map.map_id);
+    });
+  }
 
   openModal(modal);
 }
@@ -2329,4 +2373,553 @@ function renderBridgingBenchmarks() {
       </tr>
     `;
   }).join('');
+}
+
+// ==========================================================================
+// Interactive Top-Down 2D Map Rush Visualizer Engine
+// ==========================================================================
+
+function switchToVisualizer(mapId) {
+  const vizTabBtn = document.querySelector('.guide-tab-btn[data-guide-tab="visualizer"]');
+  if (vizTabBtn) {
+    vizTabBtn.click();
+  }
+  if (mapId) {
+    switchVisualizerMap(mapId);
+  }
+  const vizSection = document.getElementById('guide-panel-visualizer');
+  if (vizSection) {
+    vizSection.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+function initVisualizerControls() {
+  // Path Type Filter Buttons (All, Neighbor, Sub-Island, Mid)
+  document.querySelectorAll('.viz-path-filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.viz-path-filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.mapsGuide.selectedPathType = btn.getAttribute('data-path-type');
+      renderSchematicVisualizer(state.mapsGuide.activeVisualizerMapId);
+    });
+  });
+
+  // Layer Toggles
+  const genToggle = document.getElementById('toggle-layer-gens');
+  if (genToggle) {
+    genToggle.addEventListener('change', (e) => {
+      state.mapsGuide.showGens = e.target.checked;
+      renderSchematicVisualizer(state.mapsGuide.activeVisualizerMapId);
+    });
+  }
+
+  const labelToggle = document.getElementById('toggle-layer-labels');
+  if (labelToggle) {
+    labelToggle.addEventListener('change', (e) => {
+      state.mapsGuide.showLabels = e.target.checked;
+      renderSchematicVisualizer(state.mapsGuide.activeVisualizerMapId);
+    });
+  }
+
+  const heatmapToggle = document.getElementById('toggle-layer-heatmap');
+  if (heatmapToggle) {
+    heatmapToggle.addEventListener('change', (e) => {
+      state.mapsGuide.showHeatmap = e.target.checked;
+      renderSchematicVisualizer(state.mapsGuide.activeVisualizerMapId);
+    });
+  }
+
+  // Speed Mode Buttons (Bedrock 5.6 bps vs Sneak 1.6 bps)
+  document.querySelectorAll('.sim-speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.sim-speed-btn').forEach(b => {
+        b.classList.remove('active');
+        b.style.background = 'transparent';
+        b.style.color = 'var(--text-muted)';
+      });
+      btn.classList.add('active');
+      btn.style.background = 'var(--accent-cyan)';
+      btn.style.color = '#000';
+      state.mapsGuide.simSpeed = btn.getAttribute('data-speed');
+      if (state.mapsGuide.selectedPathId) {
+        selectVisualizerPath(state.mapsGuide.selectedPathId, false);
+      }
+    });
+  });
+
+  // Simulation Trigger Buttons
+  const startBtn = document.getElementById('btn-start-simulation');
+  if (startBtn) {
+    startBtn.addEventListener('click', () => {
+      startRushSimulation();
+    });
+  }
+
+  const resetBtn = document.getElementById('btn-reset-simulation');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      resetRushSimulation();
+    });
+  }
+}
+
+function renderVisualizerMapPills() {
+  const container = document.getElementById('visualizer-map-pills');
+  if (!container || !state.mapsGuide.maps.length) return;
+
+  container.innerHTML = state.mapsGuide.maps.map(m => {
+    const isEgg = m.game === 'EggWars';
+    const icon = isEgg ? '🥚' : '☁️';
+    const isActive = m.map_id === state.mapsGuide.activeVisualizerMapId;
+    return `
+      <button class="visualizer-map-pill-btn ${isActive ? 'active' : ''}" data-map-id="${sanitizeHTML(m.map_id)}">
+        <span>${icon}</span>
+        <span>${sanitizeHTML(m.name)}</span>
+        <span style="font-size: 0.72rem; opacity: 0.8;">(${sanitizeHTML(m.game)})</span>
+      </button>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.visualizer-map-pill-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mapId = btn.getAttribute('data-map-id');
+      switchVisualizerMap(mapId);
+    });
+  });
+}
+
+function switchVisualizerMap(mapId) {
+  resetRushSimulation();
+  state.mapsGuide.activeVisualizerMapId = mapId;
+  state.mapsGuide.selectedPathId = null;
+  state.mapsGuide.selectedIslandId = null;
+  renderVisualizerMapPills();
+  renderSchematicVisualizer(mapId);
+}
+
+function renderSchematicVisualizer(mapId) {
+  const map = state.mapsGuide.maps.find(m => m.map_id === mapId) || state.mapsGuide.maps[0];
+  if (!map || !map.schematic_2d) return;
+
+  state.mapsGuide.activeVisualizerMapId = map.map_id;
+
+  const svg = document.getElementById('schematic-svg');
+  if (!svg) return;
+
+  const badge = document.getElementById('visualizer-active-map-badge');
+  if (badge) {
+    badge.innerHTML = `${sanitizeHTML(map.name)} (${sanitizeHTML(map.game)})`;
+  }
+
+  const s = map.schematic_2d;
+  const islands = s.islands || [];
+  const paths = s.bridging_paths || [];
+
+  // Filter paths
+  const pathFilter = state.mapsGuide.selectedPathType;
+  const filteredPaths = paths.filter(p => {
+    if (pathFilter === 'all') return true;
+    if (pathFilter === 'neighbor') return p.type === 'neighbor';
+    if (pathFilter === 'sub_rush') return p.type === 'sub_rush' || p.type === 'sub_to_mid';
+    if (pathFilter === 'mid') return p.type === 'mid';
+    return true;
+  });
+
+  // Island Map for quick coordinate lookup
+  const islandMap = {};
+  islands.forEach(isl => { islandMap[isl.id] = isl; });
+
+  let svgContent = `
+    <defs>
+      <!-- Grid Pattern -->
+      <pattern id="radar-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(0, 229, 255, 0.05)" stroke-width="1"/>
+      </pattern>
+    </defs>
+
+    <!-- Background Grid -->
+    <rect width="800" height="800" fill="#04060a"/>
+    <rect width="800" height="800" fill="url(#radar-grid)"/>
+
+    <!-- Radar Coordinate Axis Lines -->
+    <line x1="400" y1="20" x2="400" y2="780" stroke="rgba(0, 229, 255, 0.12)" stroke-width="1" stroke-dasharray="3 3"/>
+    <line x1="20" y1="400" x2="780" y2="400" stroke="rgba(0, 229, 255, 0.12)" stroke-width="1" stroke-dasharray="3 3"/>
+
+    <!-- Concentric Range Rings -->
+    <circle cx="400" cy="400" r="100" fill="none" stroke="rgba(0, 229, 255, 0.08)" stroke-width="1" stroke-dasharray="4 4"/>
+    <text x="405" y="295" font-size="9" fill="rgba(0, 229, 255, 0.4)" font-family="monospace">100 BLK RADIUS</text>
+
+    <circle cx="400" cy="400" r="180" fill="none" stroke="rgba(0, 229, 255, 0.1)" stroke-width="1" stroke-dasharray="4 4"/>
+    <text x="405" y="215" font-size="9" fill="rgba(0, 229, 255, 0.4)" font-family="monospace">200 BLK RADIUS</text>
+
+    <circle cx="400" cy="400" r="285" fill="none" stroke="rgba(0, 229, 255, 0.12)" stroke-width="1" stroke-dasharray="4 4"/>
+    <text x="405" y="110" font-size="9" fill="rgba(0, 229, 255, 0.4)" font-family="monospace">BASE PERIMETER (285 BLK)</text>
+  `;
+
+  // Draw Bridging Paths
+  svgContent += `<g id="schematic-paths-group">`;
+  filteredPaths.forEach(p => {
+    const fromIsl = islandMap[p.from_id];
+    const toIsl = islandMap[p.to_id];
+    if (!fromIsl || !toIsl) return;
+
+    const dx = toIsl.x - fromIsl.x;
+    const dy = toIsl.y - fromIsl.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist === 0) return;
+
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const x1 = fromIsl.x + ux * (fromIsl.radius + 3);
+    const y1 = fromIsl.y + uy * (fromIsl.radius + 3);
+    const x2 = toIsl.x - ux * (toIsl.radius + 3);
+    const y2 = toIsl.y - uy * (toIsl.radius + 3);
+
+    let strokeCol = '#00e5ff';
+    if (state.mapsGuide.showHeatmap) {
+      if (p.danger_level === 'Extreme') strokeCol = '#c084fc';
+      else if (p.danger_level === 'High') strokeCol = '#f43f5e';
+      else if (p.danger_level === 'Medium') strokeCol = '#fbbf24';
+      else strokeCol = '#10b981';
+    } else {
+      if (p.type === 'neighbor') strokeCol = '#fbbf24';
+      else if (p.type === 'sub_rush') strokeCol = '#10b981';
+      else if (p.type === 'sub_to_mid') strokeCol = '#38bdf8';
+      else strokeCol = '#00e5ff';
+    }
+
+    const isSelected = state.mapsGuide.selectedPathId === p.id;
+    const activeClass = isSelected ? 'active-path' : '';
+
+    svgContent += `
+      <g class="path-element-wrap" data-path-id="${p.id}" style="cursor: pointer;">
+        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="16" />
+        <line id="svg-line-${p.id}" class="schematic-path-line ${activeClass}" 
+              x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" 
+              stroke="${strokeCol}" stroke-width="${isSelected ? 4 : 2}" 
+              stroke-linecap="round" opacity="${isSelected ? 1 : 0.75}" />
+    `;
+
+    if (state.mapsGuide.showLabels) {
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      svgContent += `
+        <g class="schematic-pill" transform="translate(${mx}, ${my})">
+          <rect x="-22" y="-9" width="44" height="18" rx="4" fill="rgba(4,6,10,0.88)" stroke="${strokeCol}" stroke-width="1" />
+          <text text-anchor="middle" y="3.5" font-size="9" font-weight="800" fill="#ffffff" font-family="monospace">${p.distance_blocks}b</text>
+        </g>
+      `;
+    }
+
+    svgContent += `</g>`;
+  });
+  svgContent += `</g>`;
+
+  // Draw Islands
+  svgContent += `<g id="schematic-islands-group">`;
+  islands.forEach(isl => {
+    const isSelected = state.mapsGuide.selectedIslandId === isl.id;
+    const activeClass = isSelected ? 'selected-island' : '';
+
+    svgContent += `
+      <g class="schematic-island-node ${activeClass}" data-island-id="${isl.id}" transform="translate(${isl.x}, ${isl.y})">
+        <circle r="${isl.radius + 4}" fill="none" stroke="${isl.stroke}" stroke-width="1.5" opacity="0.35" stroke-dasharray="3 2" />
+        <circle r="${isl.radius}" fill="${isl.color}" stroke="${isl.stroke}" stroke-width="2.5" />
+        <circle r="${Math.max(4, isl.radius - 4)}" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
+        <text text-anchor="middle" y="${isl.type === 'mid' ? 8 : 6}" font-size="${isl.type === 'mid' ? 24 : 16}">${isl.icon}</text>
+        <text text-anchor="middle" y="${isl.radius + 14}" font-size="10.5" font-weight="700" fill="#ffffff" filter="drop-shadow(0 1px 3px #000)">
+          ${sanitizeHTML(isl.name.split(' (')[0])}
+        </text>
+    `;
+
+    if (state.mapsGuide.showGens && isl.generators && isl.generators.length > 0) {
+      const g0 = isl.generators[0];
+      const gIcon = g0.type === 'Diamond' ? '💎' : (g0.type === 'Iron' ? '⛏️' : (g0.type === 'Gold' ? '🪙' : '📦'));
+      const gCount = g0.count || 1;
+      svgContent += `
+        <g transform="translate(${isl.radius - 6}, ${-isl.radius + 6})">
+          <circle r="9" fill="#0b0f19" stroke="${isl.stroke}" stroke-width="1"/>
+          <text text-anchor="middle" y="3" font-size="8" font-weight="800" fill="#fff">${gIcon}${gCount}</text>
+        </g>
+      `;
+    }
+
+    svgContent += `</g>`;
+  });
+  svgContent += `</g>`;
+
+  // Runner Dot (hidden by default)
+  svgContent += `
+    <g id="sim-runner-element" style="display: none; pointer-events: none;">
+      <circle r="14" fill="rgba(0,229,255,0.25)" class="schematic-runner-pulse" />
+      <circle r="7" fill="#00e5ff" stroke="#ffffff" stroke-width="2" class="schematic-runner-dot" />
+      <text y="-11" text-anchor="middle" font-size="9" font-weight="900" fill="#00e5ff" filter="drop-shadow(0 1px 3px #000)">RUNNER</text>
+    </g>
+  `;
+
+  svg.innerHTML = svgContent;
+
+  // Event Listeners on SVG
+  svg.querySelectorAll('.path-element-wrap').forEach(wrap => {
+    wrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pathId = wrap.getAttribute('data-path-id');
+      selectVisualizerPath(pathId);
+    });
+  });
+
+  svg.querySelectorAll('.schematic-island-node').forEach(node => {
+    node.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const islandId = node.getAttribute('data-island-id');
+      selectVisualizerIsland(islandId);
+    });
+  });
+
+  // Default selection if none active
+  if (!state.mapsGuide.selectedPathId && paths.length > 0) {
+    const defaultPath = paths.find(p => p.type === 'neighbor') || paths[0];
+    selectVisualizerPath(defaultPath.id, false);
+  } else if (state.mapsGuide.selectedPathId) {
+    selectVisualizerPath(state.mapsGuide.selectedPathId, false);
+  }
+}
+
+function selectVisualizerPath(pathId, shouldSimulate = false) {
+  state.mapsGuide.selectedPathId = pathId;
+
+  const map = state.mapsGuide.maps.find(m => m.map_id === state.mapsGuide.activeVisualizerMapId);
+  if (!map || !map.schematic_2d) return;
+
+  const s = map.schematic_2d;
+  const path = (s.bridging_paths || []).find(p => p.id === pathId);
+  if (!path) return;
+
+  // Highlight in SVG
+  document.querySelectorAll('.schematic-path-line').forEach(line => {
+    line.classList.remove('active-path');
+  });
+  const activeLine = document.getElementById(`svg-line-${path.id}`);
+  if (activeLine) {
+    activeLine.classList.add('active-path');
+  }
+
+  // Update Intel Sidebar
+  const panel = document.getElementById('route-intel-panel');
+  if (panel) {
+    const dangerClass = `danger-${path.danger_level.toLowerCase()}`;
+
+    panel.innerHTML = `
+      <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--accent-cyan); font-weight: 800; letter-spacing: 0.05em; margin-bottom: 0.25rem;">
+        Selected Rush Trajectory
+      </div>
+      <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff; margin-bottom: 0.75rem;">
+        ${sanitizeHTML(path.from_name)} ➔ ${sanitizeHTML(path.to_name)}
+      </h3>
+
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+        <span class="badge" style="background: rgba(0,229,255,0.15); color: var(--accent-cyan);">${sanitizeHTML(path.type.replace('_', ' ').toUpperCase())}</span>
+        <span class="danger-badge ${dangerClass}">${sanitizeHTML(path.danger_level)} DANGER</span>
+      </div>
+
+      <!-- Distance & Speed Matrix -->
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; text-align: center;">
+          <div style="border-right: 1px solid var(--border-subtle); padding-right: 0.5rem;">
+            <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Void Distance</div>
+            <div style="font-size: 1.4rem; font-weight: 900; color: var(--accent-cyan); margin-top: 2px;">
+              ${path.distance_blocks} <span style="font-size: 0.8rem; color: var(--text-muted);">blocks</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Bedrock Sprint</div>
+            <div style="font-size: 1.4rem; font-weight: 900; color: #10b981; margin-top: 2px;">
+              ⚡ ${path.jump_bridge_sec}s
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid rgba(255,255,255,0.06); margin-top: 0.75rem; padding-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted); line-height: 1.5;">
+          <div>🚶 <strong>Java Sneak Time:</strong> ${path.sneak_bridge_sec}s</div>
+          <div>📦 <strong>Blocks Needed:</strong> ${path.blocks_needed} (${(path.blocks_needed / 64).toFixed(2)} stack)</div>
+          <div style="color: #10b981; margin-top: 2px;">🚀 <strong>Bedrock Jump-Bridge:</strong> ${(path.sneak_bridge_sec - path.jump_bridge_sec).toFixed(1)}s faster than sneak!</div>
+        </div>
+      </div>
+
+      <!-- Tactical Intel Callout -->
+      <div style="background: var(--bg-surface-elevated); border-left: 3px solid var(--accent-cyan); padding: 0.75rem 1rem; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 0.82rem; color: var(--text-main); line-height: 1.5; margin-bottom: 1.25rem;">
+        💡 <strong>Tactical Rush Intel:</strong> ${sanitizeHTML(path.tactical_note)}
+      </div>
+
+      <!-- Run Simulation Button -->
+      <button class="btn btn-primary" id="btn-sidebar-simulate" style="width: 100%;">
+        ⚡ Simulate Bedrock Rush (${path.jump_bridge_sec}s)
+      </button>
+    `;
+
+    const sideSimBtn = document.getElementById('btn-sidebar-simulate');
+    if (sideSimBtn) {
+      sideSimBtn.addEventListener('click', () => {
+        startRushSimulation();
+      });
+    }
+  }
+
+  if (shouldSimulate) {
+    startRushSimulation();
+  }
+}
+
+function selectVisualizerIsland(islandId) {
+  state.mapsGuide.selectedIslandId = islandId;
+
+  const map = state.mapsGuide.maps.find(m => m.map_id === state.mapsGuide.activeVisualizerMapId);
+  if (!map || !map.schematic_2d) return;
+
+  const s = map.schematic_2d;
+  const isl = (s.islands || []).find(i => i.id === islandId);
+  if (!isl) return;
+
+  // Highlight in SVG
+  document.querySelectorAll('.schematic-island-node').forEach(node => {
+    if (node.getAttribute('data-island-id') === islandId) {
+      node.classList.add('selected-island');
+    } else {
+      node.classList.remove('selected-island');
+    }
+  });
+
+  const connectedPaths = (s.bridging_paths || []).filter(p => p.from_id === islandId || p.to_id === islandId);
+
+  const panel = document.getElementById('route-intel-panel');
+  if (panel) {
+    const isEgg = isl.egg === true;
+    let genHTML = '';
+    if (isl.generators && isl.generators.length > 0) {
+      genHTML = isl.generators.map(g => `<li><strong>${g.count || 1}x ${g.type}</strong> ${g.tier ? `(Tier ${g.tier})` : ''}</li>`).join('');
+    } else {
+      genHTML = `<li>No persistent generators</li>`;
+    }
+
+    panel.innerHTML = `
+      <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--accent-cyan); font-weight: 800; letter-spacing: 0.05em; margin-bottom: 0.25rem;">
+        Island Intelligence
+      </div>
+      <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+        <span>${isl.icon}</span>
+        <span>${sanitizeHTML(isl.name)}</span>
+      </h3>
+
+      <div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 1rem;">
+        ${sanitizeHTML(isl.description || 'Key island position on map.')}
+      </div>
+
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem; margin-bottom: 1rem;">
+        <div style="font-size: 0.75rem; color: var(--accent-cyan); font-weight: 700; text-transform: uppercase;">Resource Economy</div>
+        <ul style="margin: 0.4rem 0 0 1rem; padding: 0; font-size: 0.8rem; color: #cbd5e1; line-height: 1.6;">
+          ${genHTML}
+          ${isEgg ? `<li>🥚 <strong style="color: #fbbf24;">Egg Defense Core:</strong> Protect against rushers!</li>` : ''}
+        </ul>
+      </div>
+
+      <div style="font-size: 0.8rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem;">
+        Connected Void Rushes (${connectedPaths.length}):
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 0.4rem; max-height: 180px; overflow-y: auto;">
+        ${connectedPaths.map(p => `
+          <button class="btn btn-outline btn-sm select-connected-path-btn" data-path-id="${p.id}" style="text-align: left; justify-content: space-between; font-size: 0.78rem; padding: 5px 8px;">
+            <span>${p.from_id === islandId ? `➔ ${p.to_name}` : `➔ ${p.from_name}`}</span>
+            <span style="color: var(--accent-cyan); font-weight: 800;">${p.distance_blocks} blk (${p.jump_bridge_sec}s)</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+
+    panel.querySelectorAll('.select-connected-path-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pathId = btn.getAttribute('data-path-id');
+        selectVisualizerPath(pathId, true);
+      });
+    });
+  }
+}
+
+function startRushSimulation() {
+  resetRushSimulation();
+
+  const map = state.mapsGuide.maps.find(m => m.map_id === state.mapsGuide.activeVisualizerMapId);
+  if (!map || !map.schematic_2d) return;
+
+  const s = map.schematic_2d;
+  const path = (s.bridging_paths || []).find(p => p.id === state.mapsGuide.selectedPathId) || s.bridging_paths[0];
+  if (!path) return;
+
+  const islandMap = {};
+  (s.islands || []).forEach(isl => { islandMap[isl.id] = isl; });
+
+  const fromIsl = islandMap[path.from_id];
+  const toIsl = islandMap[path.to_id];
+  if (!fromIsl || !toIsl) return;
+
+  const runnerEl = document.getElementById('sim-runner-element');
+  if (!runnerEl) return;
+
+  const speedMode = state.mapsGuide.simSpeed;
+  const speedBps = speedMode === 'sprint' ? 5.6 : 1.6;
+  const durationMs = (path.distance_blocks / speedBps) * 1000;
+
+  runnerEl.style.display = 'block';
+  state.mapsGuide.isSimulating = true;
+
+  const startX = fromIsl.x;
+  const startY = fromIsl.y;
+  const endX = toIsl.x;
+  const endY = toIsl.y;
+
+  const startTime = performance.now();
+
+  function step(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(1, elapsed / durationMs);
+
+    const currX = startX + (endX - startX) * progress;
+    const currY = startY + (endY - startY) * progress;
+
+    runnerEl.setAttribute('transform', `translate(${currX}, ${currY})`);
+
+    const currSeconds = (elapsed / 1000).toFixed(2);
+    const currBlocks = Math.floor(progress * path.distance_blocks);
+
+    const timeTicker = document.getElementById('sim-ticker-time');
+    const blockTicker = document.getElementById('sim-ticker-blocks');
+    if (timeTicker) timeTicker.innerText = `${currSeconds}s`;
+    if (blockTicker) blockTicker.innerText = `(${currBlocks} / ${path.distance_blocks} blk)`;
+
+    if (progress < 1 && state.mapsGuide.isSimulating) {
+      state.mapsGuide.simAnimationId = requestAnimationFrame(step);
+    } else if (progress >= 1) {
+      state.mapsGuide.isSimulating = false;
+      if (timeTicker) timeTicker.innerText = `${(durationMs / 1000).toFixed(2)}s (Arrival!)`;
+      if (blockTicker) blockTicker.innerText = `(${path.distance_blocks} / ${path.distance_blocks} blk)`;
+      showToast(`🎯 Runner crossed ${path.distance_blocks} blocks to ${toIsl.name} in ${(durationMs / 1000).toFixed(2)}s!`);
+    }
+  }
+
+  state.mapsGuide.simAnimationId = requestAnimationFrame(step);
+}
+
+function resetRushSimulation() {
+  if (state.mapsGuide.simAnimationId) {
+    cancelAnimationFrame(state.mapsGuide.simAnimationId);
+    state.mapsGuide.simAnimationId = null;
+  }
+  state.mapsGuide.isSimulating = false;
+
+  const runnerEl = document.getElementById('sim-runner-element');
+  if (runnerEl) runnerEl.style.display = 'none';
+
+  const timeTicker = document.getElementById('sim-ticker-time');
+  const blockTicker = document.getElementById('sim-ticker-blocks');
+  if (timeTicker) timeTicker.innerText = '0.00s';
+  if (blockTicker) blockTicker.innerText = '(0 blk)';
 }

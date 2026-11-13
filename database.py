@@ -11,6 +11,7 @@ import os
 import urllib.request
 import re
 from datetime import datetime, timedelta
+import schematics
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cubecraft.db')
 SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bedrock_leaderboards_snapshot.json')
@@ -283,9 +284,15 @@ def init_db(reset=False):
         tactics_defense TEXT,
         tactics_mid_control TEXT,
         generator_breakdown TEXT,
-        bridging_distances TEXT
+        bridging_distances TEXT,
+        schematic_2d TEXT
     )''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_maps_strategy_game ON maps_strategy(game)')
+
+    try:
+        cursor.execute('ALTER TABLE maps_strategy ADD COLUMN schematic_2d TEXT')
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
@@ -1062,27 +1069,91 @@ def seed_maps_strategy():
                 {"target": "Neighbor Cloud Isle", "distance_blocks": 16, "jump_bridge_sec": 2.9, "sneak_bridge_sec": 10.0, "blocks_needed": 16, "danger_level": "Extreme", "tactical_note": "Fastest rush in Bedrock. Game can be won or lost in first 5 seconds."},
                 {"target": "Pot of Gold (Mid)", "distance_blocks": 22, "jump_bridge_sec": 3.9, "sneak_bridge_sec": 13.8, "blocks_needed": 22, "danger_level": "High", "tactical_note": "Reach pot of gold to gain Punch I bow and lock down all rainbow paths."}
             ])
+        },
+        {
+            "map_id": "eggwars_toys",
+            "name": "Toys",
+            "game": "EggWars",
+            "mode_variant": "Teams of 4",
+            "theme": "Childhood Playroom & Giant Lego Castle",
+            "difficulty": "Intermediate / Tactical",
+            "teams_count": 4,
+            "team_size": 4,
+            "thumbnail_url": "https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&auto=format&fit=crop&q=80",
+            "layout_schematic": "4 oversized Toy Box bastion bases surrounding 4 wooden train sub-islands, leading to an imposing Central Lego Fortress & Giant Robot.",
+            "description": "Beloved 4v4 tactical arena. Ample cover provided by colorful toy bricks and fast wooden train sub-island connections.",
+            "tactics_rush": "Neighbor Toy Box is 26 blocks away. Double-bridge rush with shields catches defenders before they unlock gold armor.",
+            "tactics_defense": "Encase egg with 1 layer of obsidian from the train station diamond gen, covered by dyed terracotta to confuse pickaxe miners.",
+            "tactics_mid_control": "Central Lego Fortress contains 4 Diamond Gens. Station a bowman on the robot shoulders to command 360-degree vision.",
+            "generator_breakdown": json.dumps({
+                "starter_island": [
+                    {"type": "Iron", "count": 1, "start_tier": 1, "max_tier": 4, "location": "Toy box corner"},
+                    {"type": "Gold", "count": 1, "start_tier": 1, "max_tier": 4, "location": "Toy box vault"}
+                ],
+                "sub_islands": [
+                    {"name": "Wooden Train Station", "count": 4, "generators": [{"type": "Diamond", "tier": 1, "count": 1, "rate_per_min": 2.0}]}
+                ],
+                "middle_island": [
+                    {"name": "Lego Fortress & Robot", "generators": [{"type": "Diamond", "tier": 1, "count": 4, "rate_per_min": 8.0}]}
+                ]
+            }),
+            "bridging_distances": json.dumps([
+                {"target": "Neighbor Toy Box", "distance_blocks": 26, "jump_bridge_sec": 4.6, "sneak_bridge_sec": 16.3, "blocks_needed": 26, "danger_level": "Medium", "tactical_note": "Rush neighboring toy box before they purchase obsidian."},
+                {"target": "Wooden Train Station", "distance_blocks": 17, "jump_bridge_sec": 3.0, "sneak_bridge_sec": 10.6, "blocks_needed": 17, "danger_level": "Low", "tactical_note": "Fast 17-block opening rush to secure diamonds."},
+                {"target": "Lego Fortress (Mid)", "distance_blocks": 38, "jump_bridge_sec": 6.8, "sneak_bridge_sec": 23.8, "blocks_needed": 38, "danger_level": "High", "tactical_note": "Direct bridge to Lego fortress."}
+            ])
+        },
+        {
+            "map_id": "skywars_magic",
+            "name": "Magic",
+            "game": "SkyWars",
+            "mode_variant": "Solo & Duos",
+            "theme": "Mystic Astral Realm & Floating Wizard Spires",
+            "difficulty": "Fast-Paced / Vertical",
+            "teams_count": 12,
+            "team_size": 1,
+            "thumbnail_url": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
+            "layout_schematic": "12 floating crystal Wizard Towers surrounding a magnificent floating Spellbook & Arcane Spire in the void.",
+            "description": "High-octane SkyWars map featuring mystical vertical spires, splash potions, and rapid 19-block tower-to-tower combat.",
+            "tactics_rush": "Adjacent Wizard Tower is only 19 blocks away. Loot top turret chest, splash speed potion, and jump-bridge across in 3.4 seconds.",
+            "tactics_defense": "Use tower parapets to block incoming arrows and ender pearls.",
+            "tactics_mid_control": "Bridge 28 blocks to the Arcane Spellbook at center to secure enchanted diamond swords and regeneration potions.",
+            "generator_breakdown": json.dumps({
+                "starter_island": [
+                    {"type": "Chest Loot", "count": 3, "loot_tier": "Basic/Normal", "location": "1 at turret, 2 inside spire"}
+                ],
+                "middle_island": [
+                    {"name": "Arcane Spellbook Spire", "generators": [{"type": "Chest Loot", "count": 6, "loot_tier": "Overpowered/Diamond", "location": "Center spellbook pedestal"}]}
+                ]
+            }),
+            "bridging_distances": json.dumps([
+                {"target": "Neighbor Wizard Tower", "distance_blocks": 19, "jump_bridge_sec": 3.4, "sneak_bridge_sec": 11.9, "blocks_needed": 19, "danger_level": "High", "tactical_note": "Fast 19-block tower flank with speed potion."},
+                {"target": "Arcane Spire (Mid)", "distance_blocks": 28, "jump_bridge_sec": 5.0, "sneak_bridge_sec": 17.5, "blocks_needed": 28, "danger_level": "High", "tactical_note": "Direct bridge to arcane spellbook center."}
+            ])
         }
     ]
 
     for m in maps_data:
+        schematic_obj = schematics.get_map_schematic_2d(m['map_id'])
+        schematic_json = json.dumps(schematic_obj) if schematic_obj else None
+
         cursor.execute('''
         INSERT OR REPLACE INTO maps_strategy (
             map_id, name, game, mode_variant, theme, difficulty,
             teams_count, team_size, thumbnail_url, layout_schematic,
             description, tactics_rush, tactics_defense, tactics_mid_control,
-            generator_breakdown, bridging_distances
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            generator_breakdown, bridging_distances, schematic_2d
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             m['map_id'], m['name'], m['game'], m['mode_variant'], m['theme'], m['difficulty'],
             m['teams_count'], m['team_size'], m['thumbnail_url'], m['layout_schematic'],
             m['description'], m['tactics_rush'], m['tactics_defense'], m['tactics_mid_control'],
-            m['generator_breakdown'], m['bridging_distances']
+            m['generator_breakdown'], m['bridging_distances'], schematic_json
         ))
 
     conn.commit()
     conn.close()
-    print(f"Seeded {len(maps_data)} official Bedrock map blueprints & strategy profiles.")
+    print(f"Seeded {len(maps_data)} official Bedrock map blueprints & 2D schematics.")
 
 def get_all_maps_strategy(game=None):
     """Retrieves all map blueprints, optionally filtered by game (EggWars or SkyWars)."""
@@ -1104,6 +1175,11 @@ def get_all_maps_strategy(game=None):
             item['generator_breakdown'] = json.loads(item['generator_breakdown'])
         if item.get('bridging_distances'):
             item['bridging_distances'] = json.loads(item['bridging_distances'])
+        if item.get('schematic_2d'):
+            try:
+                item['schematic_2d'] = json.loads(item['schematic_2d'])
+            except Exception:
+                pass
         result.append(item)
 
     return result
@@ -1124,6 +1200,11 @@ def get_map_strategy_detail(map_id):
         item['generator_breakdown'] = json.loads(item['generator_breakdown'])
     if item.get('bridging_distances'):
         item['bridging_distances'] = json.loads(item['bridging_distances'])
+    if item.get('schematic_2d'):
+        try:
+            item['schematic_2d'] = json.loads(item['schematic_2d'])
+        except Exception:
+            pass
 
     return item
 
