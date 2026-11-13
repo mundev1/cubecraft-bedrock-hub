@@ -91,6 +91,7 @@ def get_live_online_count():
     return _online_cache["count"]
 
 @app.route('/')
+@app.route('/api/index')
 def index():
     return send_from_directory(STATIC_DIR, 'index.html')
 
