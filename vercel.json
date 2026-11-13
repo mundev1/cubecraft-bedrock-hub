@@ -10,7 +10,11 @@
       "destination": "/api/interactions"
     },
     {
-      "source": "/((?!api/interactions).*)",
+      "source": "/api/debug",
+      "destination": "/api/debug"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/api/index"
     }
   ]
