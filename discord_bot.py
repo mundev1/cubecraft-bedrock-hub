@@ -121,13 +121,13 @@ def fetch_player_full_data(gamertag: str):
 
     if not p_row:
         # Check if they exist in leaderboards table even if not in players table
-        cursor.execute("SELECT player_gamertag, rank_title, avatar_color FROM leaderboards WHERE LOWER(player_gamertag) = LOWER(?) LIMIT 1", (gamertag.strip(),))
+        cursor.execute("SELECT player_gamertag FROM leaderboards WHERE LOWER(player_gamertag) = LOWER(?) LIMIT 1", (gamertag.strip(),))
         lb_match = cursor.fetchone()
         if lb_match:
             player_data = {
                 "gamertag": lb_match["player_gamertag"],
-                "rank_title": lb_match["rank_title"] or "Bedrock Competitor",
-                "avatar_color": lb_match["avatar_color"] or "#00e5ff",
+                "rank_title": "Bedrock Competitor",
+                "avatar_color": "#00e5ff",
                 "custom_bio": f"Competitor on CubeCraft Bedrock Edition.",
                 "total_points": 0
             }

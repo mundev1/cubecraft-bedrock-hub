@@ -51,195 +51,209 @@ def handle_discord_interaction(raw_body: bytes, headers: dict):
         data = body.get("data", {})
         cmd_name = data.get("name", "").lower()
         options_list = data.get("options", [])
-        options = {opt.get("name"): opt.get("value") for opt in options_list}
+        options = {opt.get("name"): opt.get("value") for opt in options_list if opt.get("name")}
 
         embed = None
 
-        if cmd_name == "player":
-            gamertag = options.get("gamertag", "MundevPolite")
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM players WHERE LOWER(gamertag) = LOWER(?)", (gamertag.strip(),))
-            p_row = cursor.fetchone()
-            if not p_row:
-                cursor.execute(
-                    "SELECT player_gamertag, rank_title, avatar_color FROM leaderboards WHERE LOWER(player_gamertag) = LOWER(?) LIMIT 1",
-                    (gamertag.strip(),)
-                )
-                lb_match = cursor.fetchone()
-                if lb_match:
-                    player_data = {
-                        "gamertag": lb_match["player_gamertag"],
-                        "rank_title": lb_match["rank_title"] or "Bedrock Competitor",
-                        "avatar_color": lb_match["avatar_color"] or "#00e5ff",
-                        "custom_bio": "Competitor on CubeCraft Bedrock.",
-                        "total_points": 0
-                    }
+        try:
+            if cmd_name == "player":
+                gamertag = str(options.get("gamertag") or "MundevPolite").strip()
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM players WHERE LOWER(gamertag) = LOWER(?)", (gamertag,))
+                p_row = cursor.fetchone()
+                if not p_row:
+                    cursor.execute(
+                        "SELECT player_gamertag FROM leaderboards WHERE LOWER(player_gamertag) = LOWER(?) LIMIT 1",
+                        (gamertag,)
+                    )
+                    lb_match = cursor.fetchone()
+                    if lb_match:
+                        player_data = {
+                            "gamertag": lb_match["player_gamertag"],
+                            "rank_title": "Bedrock Competitor",
+                            "avatar_color": "#00e5ff",
+                            "custom_bio": "Competitor on CubeCraft Bedrock.",
+                            "total_points": 0
+                        }
+                    else:
+                        player_data = None
                 else:
-                    player_data = None
-            else:
-                player_data = dict(p_row)
+                    player_data = dict(p_row)
 
-            if player_data:
-                cursor.execute(
-                    "SELECT game, mode, rank, points FROM leaderboards WHERE LOWER(player_gamertag) = LOWER(?) ORDER BY points DESC",
-                    (gamertag.strip(),)
-                )
-                player_data["leaderboards"] = [dict(r) for r in cursor.fetchall()]
-                cursor.execute(
-                    "SELECT sentiment FROM encounters WHERE LOWER(player_gamertag) = LOWER(?) AND reported = 0",
-                    (gamertag.strip(),)
-                )
-                encounters = [dict(r) for r in cursor.fetchall()]
-                res = build_player_discord_embed(player_data, encounters)
-                embed = res["embed"]
-            else:
-                embed = {
-                    "title": "🔍 Player Not Found",
-                    "description": f"Could not find **{gamertag}** among 826+ indexed Bedrock competitors.",
-                    "color": 0xEF4444
-                }
-            conn.close()
-
-        elif cmd_name in ["leaderboard", "top"]:
-            game = options.get("game", "EggWars")
-            mode = options.get("mode", "Solo")
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT player_gamertag, game, mode, points, rank, rank_title FROM leaderboards WHERE LOWER(game) = LOWER(?) AND LOWER(mode) = LOWER(?) ORDER BY rank ASC, points DESC LIMIT 10",
-                (game.strip(), mode.strip())
-            )
-            rows = [dict(r) for r in cursor.fetchall()]
-            conn.close()
-            if rows:
-                rank1 = rows[0]
-                rank2 = rows[1] if len(rows) > 1 else None
-                champ = build_leaderboard_champion_discord_embed(game, mode, rank1, rank2)
-                embed = champ["embed"]
-                ladder = []
-                for r in rows:
-                    rnk = r.get("rank", 0)
-                    medal = "🥇" if rnk == 1 else ("🥈" if rnk == 2 else ("🥉" if rnk == 3 else f"` #{rnk:>2} `"))
-                    pts = f"{r['points']:,}"
-                    tag = r['player_gamertag']
-                    ladder.append(f"{medal} **{tag}** ── `{pts} pts`")
-                embed["fields"].append({"name": f"🏆 Top {len(rows)} Standings", "value": "\n".join(ladder), "inline": False})
-            else:
-                embed = {
-                    "title": "⚠️ No Leaderboard Data",
-                    "description": f"No entries found for **{game} ({mode})**.\nTry `/leaderboard EggWars Solo` or `/leaderboard SkyWars Solo`.",
-                    "color": 0xF59E0B
-                }
-
-        elif cmd_name == "server":
-            online = get_live_online_count()
-            stats = get_server_tracker_stats()
-            res = build_server_status_discord_embed(online, stats["peak_window"], stats["offpeak_window"])
-            embed = res["embed"]
-
-        elif cmd_name == "map":
-            map_name = options.get("map_name", "eggwars_tea_party")
-            map_data = get_map_strategy_detail(map_name)
-            if map_data:
-                res = build_map_tactics_discord_embed(map_data)
-                embed = res["embed"]
-            else:
-                embed = {
-                    "title": "⚠️ Map Blueprint Not Found",
-                    "description": f"Map `{map_name}` not found in strategy index.\nAvailable maps: `tea party`, `dwarven`, `atlantis`, `toys`, `trees`, `rainbow`, `magic`.",
-                    "color": 0xEF4444
-                }
-
-        elif cmd_name in ["marketplace", "market"]:
-            query = options.get("query", "")
-            items, total = search_marketplace_items(query=query, category="all", limit=3)
-            match_label = query or "Featured"
-            card_fields = []
-            for item in items:
-                title = item.get("title", "Item")
-                price = item.get("price_minecoins", 0)
-                rating = item.get("rating", 5.0)
-                author = item.get("author", "CubeCraft Games")
-                desc = item.get("description", "")[:120].strip()
-                card_fields.append({
-                    "name": f"📦 {title}",
-                    "value": f"🪙 **`{price} Minecoins`** • ⭐ **`{rating:.1f}/5.0`** • By *{author}*\n> {desc}...",
-                    "inline": False
-                })
-            embed = {
-                "title": f"🛒 CubeCraft Bedrock Marketplace • {total:,} Items Indexed",
-                "description": f"Showing top results matching **\"{match_label}\"** on the official Minecraft Bedrock store.",
-                "color": 0xEC4899,
-                "fields": card_fields if card_fields else [{"name": "🔍 No Items", "value": "No items matched your query.", "inline": False}],
-                "footer": {
-                    "text": "CubeCraft Bedrock Marketplace • In-Game Store",
-                    "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
-                }
-            }
-
-        elif cmd_name == "masters":
-            masters = get_cross_mode_masters(limit=10)
-            lines = []
-            for i, m in enumerate(masters):
-                rnk = i + 1
-                medal = "🥇" if rnk == 1 else ("🥈" if rnk == 2 else ("🥉" if rnk == 3 else f"` #{rnk:>2} `"))
-                distinct = m.get("distinct_games", 1)
-                pts = f"{m.get('total_points', 0):,}"
-                lines.append(f"{medal} **{m['gamertag']}** ── **`{distinct} Modes`** • `{pts} pts`")
-            embed = {
-                "title": "👑 Cross-Mode Dominance • \"All-Around Masters\"",
-                "description": "Elite Bedrock competitors holding high ranks across multiple distinct game modes simultaneously.",
-                "color": 0x8B5CF6,
-                "fields": [{"name": "🏆 Multi-Game Champions", "value": "\n".join(lines), "inline": False}],
-                "footer": {
-                    "text": "CubeCraft Bedrock Competitive Analytics • play.cubecraft.net",
-                    "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
-                }
-            }
-
-        elif cmd_name == "ping":
-            embed = {
-                "title": "🏓 Pong!",
-                "description": "⚡ **Response Time:** `~28ms`\n🟢 **Network Engine:** 100% Operational\n📡 **Live Telemetry:** Synchronized with `play.cubecraft.net`",
-                "color": 0x10B981,
-                "footer": {
-                    "text": "CubeCraft Bedrock Engine • Telemetry Active",
-                    "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
-                }
-            }
-
-        else: # help
-            embed = {
-                "title": "🎮 CubeCraft Bedrock Bot — Commands Guide",
-                "description": "Official competitive companion for Minecraft Bedrock Edition players.\nUse any command below in chat to inspect live network data:",
-                "color": 0x5865F2,
-                "fields": [
-                    {
-                        "name": "👤 Competitor Lookups",
-                        "value": "• `/player <gamertag>` — Rank tier, community reputation & stats\n• `/masters` — Cross-mode dominance top competitors",
-                        "inline": False
-                    },
-                    {
-                        "name": "🏆 Competition & Leaderboards",
-                        "value": "• `/leaderboard [game] [mode]` — Live #1 champion & top 10 standings\n• `/server` — Online Bedrock player count & optimal grind hours",
-                        "inline": False
-                    },
-                    {
-                        "name": "🗺️ Tactical Strategy & Marketplace",
-                        "value": "• `/map <map_name>` — Bridging benchmarks & opening rush meta\n• `/marketplace [query]` — Search 922+ skins, cages & bundles\n• `/ping` — Live engine response latency",
-                        "inline": False
-                    },
-                    {
-                        "name": "🌐 Connect to CubeCraft",
-                        "value": "Server IP: `play.cubecraft.net` • Port: `19132`",
-                        "inline": False
+                if player_data:
+                    cursor.execute(
+                        "SELECT game, mode, rank, points FROM leaderboards WHERE LOWER(player_gamertag) = LOWER(?) ORDER BY points DESC",
+                        (gamertag,)
+                    )
+                    player_data["leaderboards"] = [dict(r) for r in cursor.fetchall()]
+                    cursor.execute(
+                        "SELECT sentiment FROM encounters WHERE LOWER(player_gamertag) = LOWER(?) AND reported = 0",
+                        (gamertag,)
+                    )
+                    encounters = [dict(r) for r in cursor.fetchall()]
+                    res = build_player_discord_embed(player_data, encounters)
+                    embed = res["embed"]
+                else:
+                    embed = {
+                        "title": "🔍 Player Not Found",
+                        "description": f"Could not find **{gamertag}** among 826+ indexed Bedrock competitors.",
+                        "color": 0xEF4444
                     }
-                ],
-                "footer": {
-                    "text": "CubeCraft Bedrock Community Hub • Built for Bedrockers",
-                    "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
+                conn.close()
+
+            elif cmd_name in ["leaderboard", "top"]:
+                game = str(options.get("game") or "EggWars").strip()
+                mode = str(options.get("mode") or "Solo").strip()
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT l.player_gamertag, l.game, l.mode, l.points, l.rank, p.rank_title, p.avatar_color
+                    FROM leaderboards l
+                    LEFT JOIN players p ON LOWER(l.player_gamertag) = LOWER(p.gamertag)
+                    WHERE LOWER(l.game) = LOWER(?) AND LOWER(l.mode) = LOWER(?)
+                    ORDER BY l.rank ASC, l.points DESC
+                    LIMIT 10
+                """, (game, mode))
+                rows = [dict(r) for r in cursor.fetchall()]
+                conn.close()
+                if rows:
+                    rank1 = rows[0]
+                    rank2 = rows[1] if len(rows) > 1 else None
+                    champ = build_leaderboard_champion_discord_embed(game, mode, rank1, rank2)
+                    embed = champ["embed"]
+                    ladder = []
+                    for r in rows:
+                        rnk = r.get("rank", 0)
+                        medal = "🥇" if rnk == 1 else ("🥈" if rnk == 2 else ("🥉" if rnk == 3 else f"` #{rnk:>2} `"))
+                        pts = f"{r['points']:,}"
+                        tag = r['player_gamertag']
+                        ladder.append(f"{medal} **{tag}** ── `{pts} pts`")
+                    embed["fields"].append({"name": f"🏆 Top {len(rows)} Standings", "value": "\n".join(ladder), "inline": False})
+                else:
+                    embed = {
+                        "title": "⚠️ No Leaderboard Data",
+                        "description": f"No entries found for **{game} ({mode})**.\nTry `/leaderboard EggWars Solo` or `/leaderboard SkyWars Solo`.",
+                        "color": 0xF59E0B
+                    }
+
+            elif cmd_name == "server":
+                online = get_live_online_count()
+                stats = get_server_tracker_stats()
+                res = build_server_status_discord_embed(online, stats["peak_window"], stats["offpeak_window"])
+                embed = res["embed"]
+
+            elif cmd_name == "map":
+                map_name = str(options.get("map_name") or "eggwars_tea_party").strip()
+                map_data = get_map_strategy_detail(map_name)
+                if map_data:
+                    res = build_map_tactics_discord_embed(map_data)
+                    embed = res["embed"]
+                else:
+                    embed = {
+                        "title": "⚠️ Map Blueprint Not Found",
+                        "description": f"Map `{map_name}` not found in strategy index.\nAvailable maps: `tea party`, `dwarven`, `atlantis`, `toys`, `trees`, `rainbow`, `magic`.",
+                        "color": 0xEF4444
+                    }
+
+            elif cmd_name in ["marketplace", "market"]:
+                query = str(options.get("query") or "").strip()
+                items, total = search_marketplace_items(query=query, category="all", limit=3)
+                match_label = query or "Featured"
+                card_fields = []
+                for item in items:
+                    title = item.get("title", "Item")
+                    price = item.get("price_minecoins", 0)
+                    rating = item.get("rating", 5.0)
+                    author = item.get("author", "CubeCraft Games")
+                    desc = item.get("description", "")[:120].strip()
+                    card_fields.append({
+                        "name": f"📦 {title}",
+                        "value": f"🪙 **`{price} Minecoins`** • ⭐ **`{rating:.1f}/5.0`** • By *{author}*\n> {desc}...",
+                        "inline": False
+                    })
+                embed = {
+                    "title": f"🛒 CubeCraft Bedrock Marketplace • {total:,} Items Indexed",
+                    "description": f"Showing top results matching **\"{match_label}\"** on the official Minecraft Bedrock store.",
+                    "color": 0xEC4899,
+                    "fields": card_fields if card_fields else [{"name": "🔍 No Items", "value": "No items matched your query.", "inline": False}],
+                    "footer": {
+                        "text": "CubeCraft Bedrock Marketplace • In-Game Store",
+                        "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
+                    }
                 }
+
+            elif cmd_name == "masters":
+                masters = get_cross_mode_masters(limit=10)
+                lines = []
+                for i, m in enumerate(masters):
+                    rnk = i + 1
+                    medal = "🥇" if rnk == 1 else ("🥈" if rnk == 2 else ("🥉" if rnk == 3 else f"` #{rnk:>2} `"))
+                    distinct = m.get("distinct_games", 1)
+                    pts = f"{m.get('total_points', 0):,}"
+                    lines.append(f"{medal} **{m['gamertag']}** ── **`{distinct} Modes`** • `{pts} pts`")
+                embed = {
+                    "title": "👑 Cross-Mode Dominance • \"All-Around Masters\"",
+                    "description": "Elite Bedrock competitors holding high ranks across multiple distinct game modes simultaneously.",
+                    "color": 0x8B5CF6,
+                    "fields": [{"name": "🏆 Multi-Game Champions", "value": "\n".join(lines), "inline": False}],
+                    "footer": {
+                        "text": "CubeCraft Bedrock Competitive Analytics • play.cubecraft.net",
+                        "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
+                    }
+                }
+
+            elif cmd_name == "ping":
+                embed = {
+                    "title": "🏓 Pong!",
+                    "description": "⚡ **Response Time:** `~28ms`\n🟢 **Network Engine:** 100% Operational\n📡 **Live Telemetry:** Synchronized with `play.cubecraft.net`",
+                    "color": 0x10B981,
+                    "footer": {
+                        "text": "CubeCraft Bedrock Engine • Telemetry Active",
+                        "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
+                    }
+                }
+
+            else: # help
+                embed = {
+                    "title": "🎮 CubeCraft Bedrock Bot — Commands Guide",
+                    "description": "Official competitive companion for Minecraft Bedrock Edition players.\nUse any command below in chat to inspect live network data:",
+                    "color": 0x5865F2,
+                    "fields": [
+                        {
+                            "name": "👤 Competitor Lookups",
+                            "value": "• `/player <gamertag>` — Rank tier, community reputation & stats\n• `/masters` — Cross-mode dominance top competitors",
+                            "inline": False
+                        },
+                        {
+                            "name": "🏆 Competition & Leaderboards",
+                            "value": "• `/leaderboard [game] [mode]` — Live #1 champion & top 10 standings\n• `/server` — Online Bedrock player count & optimal grind hours",
+                            "inline": False
+                        },
+                        {
+                            "name": "🗺️ Tactical Strategy & Marketplace",
+                            "value": "• `/map <map_name>` — Bridging benchmarks & opening rush meta\n• `/marketplace [query]` — Search 922+ skins, cages & bundles\n• `/ping` — Live engine response latency",
+                            "inline": False
+                        },
+                        {
+                            "name": "🌐 Connect to CubeCraft",
+                            "value": "Server IP: `play.cubecraft.net` • Port: `19132`",
+                            "inline": False
+                        }
+                    ],
+                    "footer": {
+                        "text": "CubeCraft Bedrock Community Hub • Built for Bedrockers",
+                        "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
+                    }
+                }
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            embed = {
+                "title": "⚠️ Error Executing Command",
+                "description": f"Could not process command `{cmd_name}`. Please try again.",
+                "color": 0xEF4444
             }
 
         return {
