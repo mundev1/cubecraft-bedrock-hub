@@ -6,7 +6,11 @@
   },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/interactions",
+      "destination": "/api/interactions"
+    },
+    {
+      "source": "/((?!api/interactions).*)",
       "destination": "/api/index"
     }
   ]

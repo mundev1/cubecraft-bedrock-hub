@@ -117,10 +117,11 @@ def handle_discord_interaction(raw_body: bytes, headers: dict):
                 rank2 = rows[1] if len(rows) > 1 else None
                 champ = build_leaderboard_champion_discord_embed(game, mode, rank1, rank2)
                 embed = champ["embed"]
-                ladder = [
-                    f"{'🥇' if r['rank']==1 else ('🥈' if r['rank']==2 else ('🥉' if r['rank']==3 else f'`#{r[\"rank\"]}`'))} **{r['player_gamertag']}** — `{r['points']:,} pts`"
-                    for r in rows
-                ]
+                ladder = []
+                for r in rows:
+                    rnk = r.get("rank", 0)
+                    medal = "🥇" if rnk == 1 else ("🥈" if rnk == 2 else ("🥉" if rnk == 3 else f"`#{rnk}`"))
+                    ladder.append(f"{medal} **{r['player_gamertag']}** — `{r['points']:,} pts`")
                 embed["fields"].append({"name": "🏆 Top Standings", "value": "\n".join(ladder), "inline": False})
             else:
                 embed = {
@@ -147,9 +148,10 @@ def handle_discord_interaction(raw_body: bytes, headers: dict):
         elif cmd_name in ["marketplace", "market"]:
             query = options.get("query", "")
             items, total = search_marketplace_items(query=query, category="all", limit=3)
+            match_label = query or 'all'
             embed = {
                 "title": f"🛒 Marketplace Catalog ({total:,} Items Indexed)",
-                "description": f"Showing top results matching **\"{query or 'all'}\"**.",
+                "description": f"Showing top results matching **'{match_label}'**.",
                 "color": 0x00E5FF,
                 "fields": [
                     {
