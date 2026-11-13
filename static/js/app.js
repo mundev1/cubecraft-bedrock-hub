@@ -57,6 +57,16 @@ const state = {
     selectedPathId: null,
     isSimulating: false,
     simAnimationId: null
+  },
+  discordExporter: {
+    type: 'player',
+    target: 'MundevPolite',
+    game: 'EggWars',
+    mode: 'Solo',
+    mapId: 'eggwars_tea_party',
+    currentPayload: null,
+    currentMarkdown: '',
+    currentEmbed: null
   }
 };
 
@@ -120,6 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initModalListeners();
   initSearchAutocomplete();
   initCommunityClipSubmissions();
+  initDiscordExporter();
 
   // Live leaderboards sync button
   const syncBtn = document.getElementById('sync-leaderboards-btn');
@@ -387,6 +398,11 @@ function renderPodium(podium) {
             <span class="stat-lbl">Reviews</span>
           </div>
         </div>
+        ${rank === 1 ? `
+          <button class="btn btn-outline btn-xs" style="margin-top: 0.6rem; font-size: 0.72rem; border-color: rgba(245, 158, 11, 0.4); color: #f59e0b; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 4px;" onclick="openDiscordExporterModal('leaderboard', {game: state.selectedGame, mode: state.selectedMode})">
+            <span>💬</span> Export #1 Embed
+          </button>
+        ` : ''}
       </div>
     `;
   }).join('');
@@ -2053,9 +2069,14 @@ function openMapModal(mapId) {
       <img src="${sanitizeHTML(map.thumbnail_url)}" alt="${sanitizeHTML(map.name)}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.75;">
       <div style="position: absolute; inset: 0; background: linear-gradient(0deg, rgba(6,8,13,0.95) 0%, rgba(6,8,13,0.3) 100%);"></div>
       
-      <button class="btn btn-primary btn-sm modal-open-visualizer-btn" style="position: absolute; top: 16px; right: 20px; z-index: 3;">
-        🛰️ Launch 2D Rush Visualizer ➔
-      </button>
+      <div style="position: absolute; top: 16px; right: 20px; z-index: 3; display: flex; gap: 0.5rem; align-items: center;">
+        <button class="btn btn-outline btn-sm modal-open-discord-btn" style="border-color: rgba(88, 101, 242, 0.4); color: #818cf8; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(4px);">
+          💬 Discord Embed
+        </button>
+        <button class="btn btn-primary btn-sm modal-open-visualizer-btn">
+          🛰️ Launch 2D Rush Visualizer ➔
+        </button>
+      </div>
 
       <div style="position: absolute; bottom: 16px; left: 20px; right: 20px; z-index: 2;">
         <div style="display: flex; gap: 0.5rem; margin-bottom: 0.3rem;">
@@ -2133,6 +2154,15 @@ function openMapModal(mapId) {
       </div>
     </div>
   `;
+
+  // Wire modal discord export button
+  const modalDiscordBtn = bodyEl.querySelector('.modal-open-discord-btn');
+  if (modalDiscordBtn) {
+    modalDiscordBtn.addEventListener('click', () => {
+      closeModal(modal);
+      openDiscordExporterModal('map', map.map_id);
+    });
+  }
 
   // Wire modal visualizer button
   const modalVizBtn = bodyEl.querySelector('.modal-open-visualizer-btn');
@@ -2922,4 +2952,518 @@ function resetRushSimulation() {
   const blockTicker = document.getElementById('sim-ticker-blocks');
   if (timeTicker) timeTicker.innerText = '0.00s';
   if (blockTicker) blockTicker.innerText = '(0 blk)';
+}
+
+// ==========================================================================
+// Discord Rich Embed & Webhook Exporter
+// ==========================================================================
+
+function initDiscordExporter() {
+  // Global Header Button
+  const headerBtn = document.getElementById('open-discord-exporter-btn');
+  if (headerBtn) {
+    headerBtn.addEventListener('click', () => openDiscordExporterModal());
+  }
+
+  // Leaderboard Quick Export Button
+  const lbBtn = document.getElementById('lb-discord-export-btn');
+  if (lbBtn) {
+    lbBtn.addEventListener('click', () => {
+      openDiscordExporterModal('leaderboard', {
+        game: state.selectedGame || 'EggWars',
+        mode: state.selectedMode === 'All Modes' ? 'Solo' : (state.selectedMode || 'Solo')
+      });
+    });
+  }
+
+  // Analytics Quick Export Button
+  const serverBtn = document.getElementById('server-discord-export-btn');
+  if (serverBtn) {
+    serverBtn.addEventListener('click', () => openDiscordExporterModal('server'));
+  }
+
+  // Player Profile Quick Export Button
+  const playerBtn = document.getElementById('player-profile-discord-btn');
+  if (playerBtn) {
+    playerBtn.addEventListener('click', () => {
+      const gt = state.activePlayer ? state.activePlayer.player_gamertag : 'MundevPolite';
+      openDiscordExporterModal('player', gt);
+    });
+  }
+
+  // Sub-Tab Navigation inside modal
+  const tabBtns = document.querySelectorAll('.discord-tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.getAttribute('data-type');
+      if (type) switchDiscordTab(type);
+    });
+  });
+
+  // Copy Markdown Button
+  const copyMdBtn = document.getElementById('discord-copy-markdown-btn');
+  if (copyMdBtn) {
+    copyMdBtn.addEventListener('click', () => {
+      if (state.discordExporter.currentMarkdown) {
+        copyToClipboard(state.discordExporter.currentMarkdown, '📋 Copied Discord Markdown to clipboard!');
+      } else {
+        showToast('No markdown available to copy.');
+      }
+    });
+  }
+
+  // Copy JSON Button
+  const copyJsonBtn = document.getElementById('discord-copy-json-btn');
+  if (copyJsonBtn) {
+    copyJsonBtn.addEventListener('click', () => {
+      if (state.discordExporter.currentPayload) {
+        copyToClipboard(JSON.stringify(state.discordExporter.currentPayload, null, 2), '📦 Copied Webhook JSON payload to clipboard!');
+      } else {
+        showToast('No webhook JSON available to copy.');
+      }
+    });
+  }
+
+  // Send Webhook Button
+  const sendWebhookBtn = document.getElementById('discord-send-webhook-btn');
+  if (sendWebhookBtn) {
+    sendWebhookBtn.addEventListener('click', sendDiscordWebhook);
+  }
+}
+
+function openDiscordExporterModal(type = 'player', target = null) {
+  state.discordExporter.type = type;
+
+  if (target) {
+    if (type === 'player' && typeof target === 'string') {
+      state.discordExporter.target = target;
+    } else if (type === 'leaderboard' && typeof target === 'object') {
+      state.discordExporter.game = target.game || state.discordExporter.game;
+      state.discordExporter.mode = target.mode || state.discordExporter.mode;
+    } else if (type === 'map' && typeof target === 'string') {
+      state.discordExporter.mapId = target;
+    }
+  }
+
+  // Update tabs UI
+  document.querySelectorAll('.discord-tab-btn').forEach(btn => {
+    if (btn.getAttribute('data-type') === state.discordExporter.type) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  // Render tab controls and fetch preview
+  renderDiscordControls();
+  fetchAndRenderDiscordExport();
+
+  // Reset status message
+  const statusEl = document.getElementById('discord-webhook-status');
+  if (statusEl) {
+    statusEl.style.display = 'none';
+    statusEl.innerHTML = '';
+  }
+
+  openModal(document.getElementById('discord-exporter-modal'));
+}
+
+function switchDiscordTab(type) {
+  state.discordExporter.type = type;
+
+  document.querySelectorAll('.discord-tab-btn').forEach(btn => {
+    if (btn.getAttribute('data-type') === type) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  renderDiscordControls();
+  fetchAndRenderDiscordExport();
+}
+
+function renderDiscordControls() {
+  const container = document.getElementById('discord-controls-container');
+  if (!container) return;
+
+  const type = state.discordExporter.type;
+
+  if (type === 'player') {
+    container.innerHTML = `
+      <div style="display: flex; gap: 0.85rem; align-items: flex-end; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 220px;">
+          <label style="display: block; font-size: 0.74rem; color: #949ba4; font-weight: 700; margin-bottom: 4px; text-transform: uppercase;">
+            Bedrock Player Gamertag
+          </label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="discord-input-gamertag" class="form-control" value="${sanitizeHTML(state.discordExporter.target)}" placeholder="Enter Bedrock Gamertag..." style="font-weight: 700;" />
+            <button class="btn btn-primary btn-sm" id="discord-fetch-btn" style="min-width: 100px;">
+              Generate
+            </button>
+          </div>
+        </div>
+        <div>
+          <span style="font-size: 0.72rem; color: #949ba4; font-weight: 700; display: block; margin-bottom: 4px; text-transform: uppercase;">
+            Quick Competitors:
+          </span>
+          <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+            <button class="btn btn-outline btn-xs discord-quick-pick" data-gt="MundevPolite">MundevPolite</button>
+            <button class="btn btn-outline btn-xs discord-quick-pick" data-gt="ykelias1439">ykelias1439</button>
+            <button class="btn btn-outline btn-xs discord-quick-pick" data-gt="TottoOP">TottoOP</button>
+            <button class="btn btn-outline btn-xs discord-quick-pick" data-gt="pitzj yay">pitzj yay</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const input = document.getElementById('discord-input-gamertag');
+    const fetchBtn = document.getElementById('discord-fetch-btn');
+
+    if (fetchBtn && input) {
+      fetchBtn.addEventListener('click', () => {
+        const val = input.value.trim();
+        if (val) {
+          state.discordExporter.target = val;
+          fetchAndRenderDiscordExport();
+        }
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const val = input.value.trim();
+          if (val) {
+            state.discordExporter.target = val;
+            fetchAndRenderDiscordExport();
+          }
+        }
+      });
+    }
+
+    container.querySelectorAll('.discord-quick-pick').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const gt = btn.getAttribute('data-gt');
+        if (gt) {
+          state.discordExporter.target = gt;
+          if (input) input.value = gt;
+          fetchAndRenderDiscordExport();
+        }
+      });
+    });
+
+  } else if (type === 'leaderboard') {
+    // Populate games
+    const games = state.gamesList && state.gamesList.length > 0 
+      ? state.gamesList 
+      : ['EggWars', 'SkyWars', 'Lucky Islands', 'Survival Games', 'BlockWars', 'BedWars', 'Minerware', 'Parkour Classic'];
+
+    const gameOptions = games.map(g => `
+      <option value="${sanitizeHTML(g)}" ${g === state.discordExporter.game ? 'selected' : ''}>${sanitizeHTML(g)}</option>
+    `).join('');
+
+    const modes = ['Solo', 'Teams', 'Duos', 'Squads', 'Mega'];
+    const modeOptions = modes.map(m => `
+      <option value="${sanitizeHTML(m)}" ${m === state.discordExporter.mode ? 'selected' : ''}>${sanitizeHTML(m)}</option>
+    `).join('');
+
+    container.innerHTML = `
+      <div style="display: flex; gap: 0.85rem; align-items: flex-end; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 180px;">
+          <label style="display: block; font-size: 0.74rem; color: #949ba4; font-weight: 700; margin-bottom: 4px; text-transform: uppercase;">
+            Game Arena
+          </label>
+          <select id="discord-select-game" class="form-control">
+            ${gameOptions}
+          </select>
+        </div>
+        <div style="flex: 1; min-width: 160px;">
+          <label style="display: block; font-size: 0.74rem; color: #949ba4; font-weight: 700; margin-bottom: 4px; text-transform: uppercase;">
+            Match Mode
+          </label>
+          <select id="discord-select-mode" class="form-control">
+            ${modeOptions}
+          </select>
+        </div>
+        <div>
+          <button class="btn btn-primary btn-sm" id="discord-fetch-lb-btn" style="min-width: 120px;">
+            👑 Fetch #1 Champion
+          </button>
+        </div>
+      </div>
+    `;
+
+    const gameSelect = document.getElementById('discord-select-game');
+    const modeSelect = document.getElementById('discord-select-mode');
+    const fetchBtn = document.getElementById('discord-fetch-lb-btn');
+
+    if (fetchBtn) {
+      fetchBtn.addEventListener('click', () => {
+        if (gameSelect) state.discordExporter.game = gameSelect.value;
+        if (modeSelect) state.discordExporter.mode = modeSelect.value;
+        fetchAndRenderDiscordExport();
+      });
+    }
+
+  } else if (type === 'server') {
+    container.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+        <div>
+          <div style="font-size: 0.88rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 0.4rem;">
+            <span>🟢 Official CubeCraft Bedrock Server Live Status</span>
+          </div>
+          <div style="font-size: 0.78rem; color: #10b981; margin-top: 2px;">
+            Real-time player population & optimal off-peak grinding hours (04:00 - 08:00 UTC).
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="discord-fetch-server-btn" style="background: #10b981; border-color: #10b981;">
+          🔄 Refresh Server Telemetry
+        </button>
+      </div>
+    `;
+
+    const fetchBtn = document.getElementById('discord-fetch-server-btn');
+    if (fetchBtn) {
+      fetchBtn.addEventListener('click', () => fetchAndRenderDiscordExport());
+    }
+
+  } else if (type === 'map') {
+    const mapOptions = [
+      { id: 'eggwars_tea_party', name: 'Tea Party (EggWars Solo/Duos)' },
+      { id: 'eggwars_dwarven', name: 'Dwarven (EggWars Solo/Duos)' },
+      { id: 'eggwars_atlantis', name: 'Atlantis (EggWars Teams)' },
+      { id: 'eggwars_toys', name: 'Toys (EggWars Teams)' },
+      { id: 'skywars_trees', name: 'Trees (SkyWars Solo)' },
+      { id: 'skywars_rainbow', name: 'Rainbow (SkyWars Solo/Teams)' },
+      { id: 'skywars_magic', name: 'Magic (SkyWars Teams)' }
+    ].map(m => `
+      <option value="${m.id}" ${m.id === state.discordExporter.mapId ? 'selected' : ''}>${m.name}</option>
+    `).join('');
+
+    container.innerHTML = `
+      <div style="display: flex; gap: 0.85rem; align-items: flex-end; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 240px;">
+          <label style="display: block; font-size: 0.74rem; color: #949ba4; font-weight: 700; margin-bottom: 4px; text-transform: uppercase;">
+            Tactical Bedrock Arena Map
+          </label>
+          <select id="discord-select-map" class="form-control">
+            ${mapOptions}
+          </select>
+        </div>
+        <div>
+          <button class="btn btn-primary btn-sm" id="discord-fetch-map-btn" style="min-width: 120px;">
+            🗺️ Fetch Map Tactics
+          </button>
+        </div>
+      </div>
+    `;
+
+    const mapSelect = document.getElementById('discord-select-map');
+    const fetchBtn = document.getElementById('discord-fetch-map-btn');
+
+    if (fetchBtn) {
+      fetchBtn.addEventListener('click', () => {
+        if (mapSelect) state.discordExporter.mapId = mapSelect.value;
+        fetchAndRenderDiscordExport();
+      });
+    }
+  }
+}
+
+async function fetchAndRenderDiscordExport() {
+  const previewContainer = document.getElementById('discord-rendered-embed');
+  const rawContainer = document.getElementById('discord-raw-json-output');
+  if (!previewContainer) return;
+
+  previewContainer.innerHTML = `
+    <div style="text-align: center; padding: 2rem; color: #949ba4;">
+      <div style="font-size: 1.2rem; margin-bottom: 0.4rem;">⏳</div>
+      <div>Compiling official Bedrock Discord embed...</div>
+    </div>
+  `;
+
+  let url = '';
+  const type = state.discordExporter.type;
+
+  if (type === 'player') {
+    url = `/api/discord/export/player/${encodeURIComponent(state.discordExporter.target || 'MundevPolite')}`;
+  } else if (type === 'leaderboard') {
+    url = `/api/discord/export/leaderboard?game=${encodeURIComponent(state.discordExporter.game || 'EggWars')}&mode=${encodeURIComponent(state.discordExporter.mode || 'Solo')}`;
+  } else if (type === 'server') {
+    url = `/api/discord/export/server`;
+  } else if (type === 'map') {
+    url = `/api/discord/export/map/${encodeURIComponent(state.discordExporter.mapId || 'eggwars_tea_party')}`;
+  }
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!data.success) {
+      previewContainer.innerHTML = `
+        <div style="padding: 1.5rem; color: #ef4444; background: rgba(239, 68, 68, 0.1); border-radius: 4px;">
+          <strong>Error generating embed:</strong> ${sanitizeHTML(data.error || 'Failed to fetch Discord data.')}
+        </div>
+      `;
+      if (rawContainer) rawContainer.innerText = JSON.stringify(data, null, 2);
+      return;
+    }
+
+    state.discordExporter.currentPayload = data.payload;
+    state.discordExporter.currentMarkdown = data.markdown;
+    state.discordExporter.currentEmbed = data.embed;
+
+    renderDiscordPreview(data.embed, data.payload);
+
+    if (rawContainer) {
+      rawContainer.innerText = JSON.stringify(data.payload, null, 2);
+    }
+
+    const timeEl = document.getElementById('discord-preview-time');
+    if (timeEl) {
+      const now = new Date();
+      timeEl.innerText = `Today at ${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    }
+
+  } catch (err) {
+    previewContainer.innerHTML = `
+      <div style="padding: 1.5rem; color: #ef4444; background: rgba(239, 68, 68, 0.1); border-radius: 4px;">
+        <strong>Network Error:</strong> Could not reach Discord export API.
+      </div>
+    `;
+    if (rawContainer) rawContainer.innerText = String(err);
+  }
+}
+
+function formatDiscordMarkdownText(text) {
+  if (!text) return '';
+  let safe = sanitizeHTML(text);
+  // Quotes: &gt; quote
+  safe = safe.replace(/^&gt; (.*$)/gim, '<blockquote>$1</blockquote>');
+  // Bold: **text**
+  safe = safe.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // Italic: *text*
+  safe = safe.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  // Inline code: `code`
+  safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Newlines to <br>
+  safe = safe.replace(/\n/g, '<br>');
+  return safe;
+}
+
+function renderDiscordPreview(embed, payload) {
+  const container = document.getElementById('discord-rendered-embed');
+  if (!container || !embed) return;
+
+  const hexColor = embed.color 
+    ? '#' + (embed.color & 0xFFFFFF).toString(16).padStart(6, '0') 
+    : '#5865F2';
+
+  // Fields HTML
+  let fieldsHTML = '';
+  if (Array.isArray(embed.fields)) {
+    fieldsHTML = embed.fields.map(f => {
+      const isInline = f.inline !== false;
+      return `
+        <div class="discord-embed-field ${isInline ? '' : 'full-width'}">
+          <div class="discord-field-name">${sanitizeHTML(f.name)}</div>
+          <div class="discord-field-value">${formatDiscordMarkdownText(f.value)}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Footer HTML
+  let footerHTML = '';
+  if (embed.footer) {
+    const icon = embed.footer.icon_url 
+      ? `<img src="${sanitizeHTML(embed.footer.icon_url)}" alt="footer icon" onerror="this.style.display='none';" />`
+      : '';
+    const timeStr = embed.timestamp 
+      ? ` • ${new Date(embed.timestamp).toLocaleDateString()}` 
+      : '';
+    footerHTML = `
+      <div class="discord-embed-footer">
+        ${icon}
+        <span>${sanitizeHTML(embed.footer.text)}${timeStr}</span>
+      </div>
+    `;
+  }
+
+  // Thumbnail
+  const thumbHTML = embed.thumbnail && embed.thumbnail.url
+    ? `<img class="discord-embed-thumb" src="${sanitizeHTML(embed.thumbnail.url)}" alt="thumbnail" onerror="this.style.display='none';" />`
+    : '';
+
+  container.style.borderLeftColor = hexColor;
+  container.innerHTML = `
+    ${thumbHTML}
+    <div class="discord-embed-title">${sanitizeHTML(embed.title || '')}</div>
+    ${embed.description ? `<div class="discord-embed-description">${formatDiscordMarkdownText(embed.description)}</div>` : ''}
+    <div class="discord-embed-fields">
+      ${fieldsHTML}
+    </div>
+    ${footerHTML}
+  `;
+}
+
+async function sendDiscordWebhook() {
+  const input = document.getElementById('discord-webhook-url-input');
+  const btn = document.getElementById('discord-send-webhook-btn');
+  const statusEl = document.getElementById('discord-webhook-status');
+
+  if (!input || !btn || !statusEl) return;
+
+  const webhookUrl = input.value.trim();
+  if (!webhookUrl) {
+    statusEl.style.display = 'block';
+    statusEl.style.color = '#ef4444';
+    statusEl.innerText = '⚠️ Please enter a Discord Webhook URL.';
+    return;
+  }
+
+  if (!webhookUrl.startsWith('https://discord.com/api/webhooks/') && !webhookUrl.startsWith('https://discordapp.com/api/webhooks/')) {
+    statusEl.style.display = 'block';
+    statusEl.style.color = '#ef4444';
+    statusEl.innerText = '⚠️ Webhook URL must begin with https://discord.com/api/webhooks/...';
+    return;
+  }
+
+  if (!state.discordExporter.currentPayload) {
+    statusEl.style.display = 'block';
+    statusEl.style.color = '#ef4444';
+    statusEl.innerText = '⚠️ No active payload loaded. Please generate an embed first.';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = '🚀 Sending...';
+  statusEl.style.display = 'block';
+  statusEl.style.color = '#949ba4';
+  statusEl.innerText = '📡 Dispatching payload to Discord...';
+
+  try {
+    const res = await fetch('/api/discord/send-webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        webhook_url: webhookUrl,
+        payload: state.discordExporter.currentPayload
+      })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      statusEl.style.color = '#10b981';
+      statusEl.innerHTML = `✅ <strong>Dispatched to Discord!</strong> Payload delivered to channel (HTTP ${data.status_code || 204}).`;
+      showToast('🚀 Successfully dispatched Discord Webhook!');
+    } else {
+      statusEl.style.color = '#ef4444';
+      statusEl.innerHTML = `❌ <strong>Failed:</strong> ${sanitizeHTML(data.error || 'Discord rejected the webhook payload.')}`;
+    }
+  } catch (err) {
+    statusEl.style.color = '#ef4444';
+    statusEl.innerHTML = `❌ <strong>Network Error:</strong> ${sanitizeHTML(String(err))}`;
+  } finally {
+    btn.disabled = false;
+    btn.innerText = '🚀 Dispatch';
+  }
 }

@@ -59,6 +59,12 @@
           <div id="search-autocomplete-dropdown" style="display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: 0 10px 25px rgba(0,0,0,0.6); z-index: 200; max-height: 320px; overflow-y: auto;"></div>
         </div>
 
+        <!-- Discord Embed & Webhook Exporter Button -->
+        <button class="btn btn-outline btn-sm discord-header-btn" id="open-discord-exporter-btn" style="border-color: rgba(88, 101, 242, 0.4); color: #cbd5e1; display: inline-flex; align-items: center; gap: 0.35rem;" title="Discord Rich Embed & Webhook Exporter">
+          <span style="color: #5865F2; font-size: 1.05rem;">💬</span>
+          <span class="hide-mobile">Discord Exporter</span>
+        </button>
+
         <!-- Server IP copy pill -->
         <div class="server-pill" id="server-pill" title="Click to copy Server Address">
           <span class="status-dot"></span>
@@ -147,6 +153,9 @@
           <button class="btn btn-outline btn-sm" id="sync-leaderboards-btn" title="Refresh leaderboards from live CubeCraft API">
             🔄 Live Refresh
           </button>
+          <button class="btn btn-outline btn-sm" id="lb-discord-export-btn" style="border-color: rgba(245, 158, 11, 0.4); color: #f59e0b; display: inline-flex; align-items: center; gap: 0.35rem;" title="Export #1 Champion Embed to Discord">
+            💬 Export #1
+          </button>
         </div>
       </div>
 
@@ -197,6 +206,9 @@
         <div style="display: flex; align-items: center; gap: 0.75rem;">
           <button class="btn btn-outline btn-sm" id="refresh-analytics-btn">
             🔄 Refresh Analytics
+          </button>
+          <button class="btn btn-outline btn-sm" id="server-discord-export-btn" style="border-color: rgba(16, 185, 129, 0.4); color: #10b981; display: inline-flex; align-items: center; gap: 0.35rem;" title="Export Server Status & Grind Times to Discord">
+            💬 Export Status
           </button>
           <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.3);">
             ● Live Engine Active
@@ -1004,7 +1016,12 @@
             <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.6rem;" id="profile-bio">
               CubeCraft Bedrock Ranked Competitor.
             </p>
-            <div id="profile-badges" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+            <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+              <div id="profile-badges" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+              <button class="btn btn-outline btn-xs" id="player-profile-discord-btn" style="border-color: rgba(88, 101, 242, 0.4); color: #818cf8; display: inline-flex; align-items: center; gap: 0.35rem;" title="Export this player card as Discord Embed">
+                <span>💬</span> Export Discord Card
+              </button>
+            </div>
           </div>
           <div class="profile-score-ring">
             <div class="score-num" id="profile-score-num">98%</div>
@@ -1181,6 +1198,107 @@
       </div>
       <div class="modal-body" id="map-modal-body">
         <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Discord Rich Embed & Webhook Exporter -->
+  <div id="discord-exporter-modal" class="modal-overlay">
+    <div class="modal-card wide discord-modal-card" style="max-width: 980px;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(88, 101, 242, 0.25);">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="discord-icon-badge">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+            </svg>
+          </div>
+          <div>
+            <h3 id="discord-modal-title" style="margin: 0; font-size: 1.15rem; color: #fff;">Discord Rich Embed & Webhook Exporter</h3>
+            <span style="font-size: 0.78rem; color: #949ba4;">Generate official Discord embeds & webhook dispatches for your community.</span>
+          </div>
+        </div>
+        <button class="close-btn">&times;</button>
+      </div>
+      
+      <div class="modal-body" style="padding: 1.25rem 1.5rem;">
+        <!-- Category Tabs -->
+        <div class="discord-tabs-nav" style="display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.8rem; margin-bottom: 1.25rem; flex-wrap: wrap;">
+          <button class="discord-tab-btn active" data-type="player">👤 Player Profile Card</button>
+          <button class="discord-tab-btn" data-type="leaderboard">👑 #1 Leaderboard Champion</button>
+          <button class="discord-tab-btn" data-type="server">⚡ Server Status & Windows</button>
+          <button class="discord-tab-btn" data-type="map">🗺️ Map Tactics & Gaps</button>
+        </div>
+
+        <!-- Controls Row based on selected tab -->
+        <div id="discord-controls-container" class="discord-controls-box" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem;">
+          <!-- Injected dynamically based on active tab -->
+        </div>
+
+        <!-- Live Discord Client Preview Container -->
+        <div style="margin-bottom: 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span style="font-size: 0.76rem; text-transform: uppercase; font-weight: 700; color: #949ba4; letter-spacing: 0.05em;">Live Discord Client Preview</span>
+            <span style="font-size: 0.74rem; color: #5865F2; background: rgba(88, 101, 242, 0.12); padding: 2px 8px; border-radius: 4px; font-weight: 600;">#cubecraft-stats channel</span>
+          </div>
+          
+          <!-- Authentic Discord Chat Window Mockup -->
+          <div class="discord-client-window">
+            <div class="discord-message-group">
+              <div class="discord-message-avatar">
+                <img src="https://mc-heads.net/avatar/CubeCraft/64" alt="CubeCraft Bot">
+              </div>
+              <div class="discord-message-content">
+                <div class="discord-message-header">
+                  <span class="discord-bot-name">CubeCraft Bot</span>
+                  <span class="discord-bot-badge">APP</span>
+                  <span class="discord-message-time" id="discord-preview-time">Today at 12:00 PM</span>
+                </div>
+                
+                <!-- The rendered Rich Embed -->
+                <div id="discord-rendered-embed" class="discord-embed-card">
+                  <!-- Injected dynamically -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons & Exporter Tools -->
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.25rem;">
+          <button class="btn btn-outline" id="discord-copy-markdown-btn" style="flex: 1; min-width: 180px; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;">
+            <span>📋</span> Copy Discord Markdown
+          </button>
+          <button class="btn btn-outline" id="discord-copy-json-btn" style="flex: 1; min-width: 180px; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;">
+            <span>📦</span> Copy Webhook JSON
+          </button>
+        </div>
+
+        <!-- Direct Webhook Dispatcher Section -->
+        <div class="discord-webhook-box" style="background: rgba(88, 101, 242, 0.06); border: 1px solid rgba(88, 101, 242, 0.25); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem;">
+          <div style="font-size: 0.85rem; font-weight: 700; color: #fff; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;">
+            <span>🚀 Instant Dispatch to Discord Channel</span>
+            <span style="font-size: 0.72rem; color: #10b981; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px;">Direct Webhook</span>
+          </div>
+          <p style="font-size: 0.78rem; color: #949ba4; margin-bottom: 0.75rem;">
+            Paste your Discord channel webhook URL to broadcast this embed immediately into your Discord community.
+          </p>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="url" id="discord-webhook-url-input" class="form-control" placeholder="https://discord.com/api/webhooks/..." style="flex: 1; font-family: monospace; font-size: 0.82rem;" />
+            <button class="btn btn-primary" id="discord-send-webhook-btn" style="background: #5865F2; border-color: #5865F2; min-width: 140px; font-weight: 700;">
+              🚀 Dispatch
+            </button>
+          </div>
+          <div id="discord-webhook-status" style="margin-top: 0.5rem; font-size: 0.8rem; display: none;"></div>
+        </div>
+
+        <!-- Raw Payload Accordion -->
+        <details class="discord-raw-accordion" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.6rem 0.9rem;">
+          <summary style="font-size: 0.8rem; color: var(--text-muted); cursor: pointer; font-weight: 600;">
+            🔍 Inspect Raw Webhook JSON Payload
+          </summary>
+          <pre id="discord-raw-json-output" style="margin-top: 0.75rem; background: #11141b; padding: 0.75rem; border-radius: 4px; font-size: 0.76rem; color: #10b981; overflow-x: auto; max-height: 200px;"></pre>
+        </details>
+
       </div>
     </div>
   </div>

@@ -471,5 +471,78 @@ class TestCubeCraftBedrockAPI(unittest.TestCase):
         self.assertIn('bridging', data)
         self.assertEqual(len(data['maps']), 7)
 
+    def test_discord_export_player(self):
+        res = self.app.get('/api/discord/export/player/MundevPolite')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertEqual(data['type'], 'player')
+        self.assertEqual(data['target'], 'MundevPolite')
+        
+        embed = data['embed']
+        self.assertIn('title', embed)
+        self.assertIn('MundevPolite', embed['title'])
+        self.assertIn('color', embed)
+        self.assertIn('fields', embed)
+        self.assertIn('thumbnail', embed)
+        self.assertIn('markdown', data)
+
+    def test_discord_export_leaderboard(self):
+        res = self.app.get('/api/discord/export/leaderboard?game=EggWars&mode=Solo')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertEqual(data['type'], 'leaderboard')
+        self.assertEqual(data['game'], 'EggWars')
+        
+        embed = data['embed']
+        self.assertIn('Champion', embed['title'])
+        field_names = [f['name'] for f in embed['fields']]
+        self.assertTrue(any('Champion' in fn for fn in field_names))
+        self.assertTrue(any('Score' in fn for fn in field_names))
+        self.assertIn('markdown', data)
+
+    def test_discord_export_server(self):
+        res = self.app.get('/api/discord/export/server')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertEqual(data['type'], 'server')
+        self.assertGreater(data['online_count'], 0)
+        
+        embed = data['embed']
+        self.assertIn('Server Status', embed['title'])
+        field_names = [f['name'] for f in embed['fields']]
+        self.assertTrue(any('Online' in fn for fn in field_names))
+        self.assertTrue(any('Peak' in fn for fn in field_names))
+        self.assertTrue(any('Grinding' in fn for fn in field_names))
+
+    def test_discord_export_map(self):
+        res = self.app.get('/api/discord/export/map/eggwars_tea_party')
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['success'])
+        self.assertEqual(data['type'], 'map')
+        self.assertEqual(data['map_id'], 'eggwars_tea_party')
+        
+        embed = data['embed']
+        self.assertIn('Tea Party', embed['title'])
+        self.assertIn('markdown', data)
+
+    def test_discord_webhook_safety_validation(self):
+        # 1. Missing URL
+        res_empty = self.app.post('/api/discord/send-webhook', json={'payload': {}})
+        self.assertEqual(res_empty.status_code, 400)
+
+        # 2. Invalid non-Discord URL
+        res_invalid = self.app.post('/api/discord/send-webhook', json={
+            'webhook_url': 'https://evil-site.com/exploit',
+            'payload': {}
+        })
+        self.assertEqual(res_invalid.status_code, 400)
+        data_invalid = json.loads(res_invalid.data)
+        self.assertFalse(data_invalid['success'])
+        self.assertIn('Invalid Discord Webhook URL', data_invalid['error'])
+
 if __name__ == '__main__':
     unittest.main()

@@ -23,6 +23,13 @@ from database import (
     get_map_strategy_detail, get_generator_tiers_data,
     get_bridging_benchmarks_data
 )
+from discord_exporter import (
+    build_player_discord_embed,
+    build_leaderboard_champion_discord_embed,
+    build_server_status_discord_embed,
+    build_map_tactics_discord_embed,
+    send_discord_webhook
+)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
@@ -931,6 +938,124 @@ def get_strategy_overview():
         "generators": gens,
         "bridging": benchmarks
     })
+
+# ----------------------------------------------------
+# Discord Rich Embed / Webhook Exporter API
+# ----------------------------------------------------
+
+@app.route('/api/discord/export/player/<gamertag>', methods=['GET'])
+def export_discord_player(gamertag):
+    """Generates official Discord Rich Embed & Webhook payload for any player."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM players WHERE LOWER(gamertag) = LOWER(?)', (gamertag.strip(),))
+    p_row = cursor.fetchone()
+
+    if not p_row:
+        conn.close()
+        return jsonify({"success": False, "error": f"Player '{gamertag}' not found."}), 404
+
+    player_data = dict(p_row)
+
+    # Fetch top leaderboards
+    cursor.execute('''
+        SELECT game, mode, rank, points
+        FROM leaderboards
+        WHERE LOWER(player_gamertag) = LOWER(?)
+        ORDER BY points DESC
+    ''', (gamertag.strip(),))
+    player_data['leaderboards'] = [dict(lr) for lr in cursor.fetchall()]
+
+    # Fetch encounters
+    cursor.execute('SELECT sentiment FROM encounters WHERE LOWER(player_gamertag) = LOWER(?) AND reported = 0', (gamertag.strip(),))
+    encounters = [dict(er) for er in cursor.fetchall()]
+    conn.close()
+
+    result = build_player_discord_embed(player_data, encounters)
+    return jsonify({
+        "success": True,
+        "type": "player",
+        "target": player_data['gamertag'],
+        **result
+    })
+
+@app.route('/api/discord/export/leaderboard', methods=['GET'])
+def export_discord_leaderboard():
+    """Generates Discord Rich Embed celebrating current #1 leaderboard holder."""
+    game = request.args.get('game', 'EggWars')
+    mode = request.args.get('mode', 'Solo')
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT player_gamertag, game, mode, points, rank
+        FROM leaderboards
+        WHERE LOWER(game) = LOWER(?) AND LOWER(mode) = LOWER(?)
+        ORDER BY rank ASC, points DESC
+        LIMIT 2
+    ''', (game.strip(), mode.strip()))
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return jsonify({"success": False, "error": f"No leaderboard entries found for {game} ({mode})."}), 404
+
+    rank1 = dict(rows[0])
+    rank2 = dict(rows[1]) if len(rows) > 1 else None
+
+    result = build_leaderboard_champion_discord_embed(game, mode, rank1, rank2)
+    return jsonify({
+        "success": True,
+        "type": "leaderboard",
+        "game": game,
+        "mode": mode,
+        **result
+    })
+
+@app.route('/api/discord/export/server', methods=['GET'])
+def export_discord_server():
+    """Generates Discord Rich Embed for live server status and grinding schedule."""
+    online = get_live_online_count()
+    tracker_stats = get_server_tracker_stats()
+    peak = tracker_stats.get('peak_window', '16:00 - 21:00 UTC')
+    offpeak = tracker_stats.get('offpeak_window', '04:00 - 08:00 UTC')
+
+    result = build_server_status_discord_embed(online, peak, offpeak)
+    return jsonify({
+        "success": True,
+        "type": "server",
+        "online_count": online,
+        **result
+    })
+
+@app.route('/api/discord/export/map/<map_id>', methods=['GET'])
+def export_discord_map(map_id):
+    """Generates Discord Rich Embed for map tactics and void bridging benchmarks."""
+    map_data = get_map_strategy_detail(map_id)
+    if not map_data:
+        return jsonify({"success": False, "error": f"Map '{map_id}' not found."}), 404
+
+    result = build_map_tactics_discord_embed(map_data)
+    return jsonify({
+        "success": True,
+        "type": "map",
+        "map_id": map_id,
+        **result
+    })
+
+@app.route('/api/discord/send-webhook', methods=['POST'])
+def handle_send_discord_webhook():
+    """Proxies and sends payload to an official Discord Webhook URL."""
+    body = request.get_json(silent=True) or {}
+    webhook_url = body.get('webhook_url', '').strip()
+    payload = body.get('payload', {})
+
+    if not webhook_url:
+        return jsonify({"success": False, "error": "Discord Webhook URL is required."}), 400
+
+    result = send_discord_webhook(webhook_url, payload)
+    status_code = 200 if result.get('success') else 400
+    return jsonify(result), status_code
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5055))
