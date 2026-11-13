@@ -19,6 +19,7 @@ try:
             self.wsgi_app = wsgi_app
 
         def __call__(self, environ, start_response):
+            environ['SCRIPT_NAME'] = ''
             query = environ.get('QUERY_STRING', '')
             actual_path = None
             if '__path=' in query:

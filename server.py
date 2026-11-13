@@ -91,13 +91,24 @@ def get_live_online_count():
     return _online_cache["count"]
 
 @app.route('/')
-@app.route('/api/index')
 def index():
     return send_from_directory(STATIC_DIR, 'index.html')
 
 # ----------------------------------------------------
 # Overview & Games
 # ----------------------------------------------------
+
+@app.route('/api/debug-env')
+def debug_env():
+    return jsonify({
+        "path": request.path,
+        "full_path": request.full_path,
+        "script_root": request.script_root,
+        "url": request.url,
+        "environ_PATH_INFO": request.environ.get('PATH_INFO'),
+        "environ_SCRIPT_NAME": request.environ.get('SCRIPT_NAME'),
+        "query_string": request.environ.get('QUERY_STRING')
+    })
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
