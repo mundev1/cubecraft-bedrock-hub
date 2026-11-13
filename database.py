@@ -11,6 +11,7 @@ import os
 import urllib.request
 import re
 import time
+import shutil
 from datetime import datetime, timedelta
 import schematics
 
@@ -18,7 +19,33 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cubecraft.db
 SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bedrock_leaderboards_snapshot.json')
 MARKETPLACE_SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bedrock_marketplace_snapshot.json')
 
+# Vercel serverless environment compatibility (read-only filesystem)
+def _ensure_vercel_db():
+    global DB_PATH
+    if os.environ.get('VERCEL') or not os.access(os.path.dirname(os.path.abspath(__file__)), os.W_OK):
+        tmp_db = '/tmp/cubecraft.db'
+        bundled_db = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cubecraft.db')
+        if not os.path.exists(tmp_db):
+            if os.path.exists(bundled_db):
+                try:
+                    shutil.copyfile(bundled_db, tmp_db)
+                except Exception as e:
+                    print(f"Error copying DB to /tmp: {e}")
+            else:
+                # If bundled DB was omitted, create fresh DB in /tmp and seed
+                DB_PATH = tmp_db
+                try:
+                    init_db()
+                    seed_custom_players()
+                except Exception as e:
+                    print(f"Error initializing fresh /tmp DB: {e}")
+        if os.path.exists(tmp_db):
+            DB_PATH = tmp_db
+
+_ensure_vercel_db()
+
 def get_db():
+    _ensure_vercel_db()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn

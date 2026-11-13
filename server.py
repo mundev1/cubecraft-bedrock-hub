@@ -31,22 +31,27 @@ from discord_exporter import (
     send_discord_webhook
 )
 
-app = Flask(__name__, static_folder='static', static_url_path='/static')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, 'static')
+app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='/static')
 
-# Ensure database is initialized
-init_db()
-seed_custom_players()
-seed_clips()
-init_server_tracker(6000)
-seed_maps_strategy()
+# Ensure database is initialized (skipped on serverless Vercel to preserve read-only bundle)
+if not os.environ.get('VERCEL'):
+    try:
+        init_db()
+        seed_custom_players()
+        seed_clips()
+        init_server_tracker(6000)
+        seed_maps_strategy()
 
-# Ensure marketplace has authentic data
-conn_init = get_db()
-cur_init = conn_init.cursor()
-cur_init.execute('SELECT COUNT(*) FROM marketplace')
-if cur_init.fetchone()[0] == 0:
-    sync_cubecraft_marketplace()
-conn_init.close()
+        conn_init = get_db()
+        cur_init = conn_init.cursor()
+        cur_init.execute('SELECT COUNT(*) FROM marketplace')
+        if cur_init.fetchone()[0] == 0:
+            sync_cubecraft_marketplace()
+        conn_init.close()
+    except Exception as e:
+        print(f"Startup init notice: {e}")
 
 # ----------------------------------------------------
 # Live Bedrock Status Cache (Refreshes Every 30 Seconds)
@@ -87,7 +92,7 @@ def get_live_online_count():
 
 @app.route('/')
 def index():
-    return send_from_directory('static', 'index.html')
+    return send_from_directory(STATIC_DIR, 'index.html')
 
 # ----------------------------------------------------
 # Overview & Games
@@ -1057,9 +1062,18 @@ def handle_send_discord_webhook():
     status_code = 200 if result.get('success') else 400
     return jsonify(result), status_code
 
-@app.route('/api/interactions', methods=['POST'])
+@app.route('/api/interactions', methods=['GET', 'POST'])
 def discord_interactions_webhook():
     """Receives and verifies Discord HTTP Slash Command interactions on Vercel."""
+    if request.method == 'GET':
+        public_key = os.getenv("DISCORD_PUBLIC_KEY", "").strip()
+        return jsonify({
+            "status": "online",
+            "endpoint": "/api/interactions",
+            "public_key_configured": bool(public_key),
+            "instructions": "Paste this full URL into Discord Developer Portal -> General Information -> Interactions Endpoint URL: https://cubecraft-bedrock-hub.vercel.app/api/interactions"
+        }), 200
+
     from discord_interactions_handler import handle_discord_interaction
     res_data, status_code = handle_discord_interaction(request.get_data(), request.headers)
     return jsonify(res_data), status_code

@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/**/*.py": {
+      "includeFiles": "{cubecraft.db,bedrock_leaderboards_snapshot.json,bedrock_marketplace_snapshot.json,static/**,*.py}"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
