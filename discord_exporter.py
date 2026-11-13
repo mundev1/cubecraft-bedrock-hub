@@ -103,7 +103,7 @@ def build_player_discord_embed(player_data, encounters=None):
             "text": "CubeCraft Bedrock Community Hub • play.cubecraft.net",
             "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
         },
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": datetime.utcnow().isoformat() + "+00:00"
     }
 
     payload = {
@@ -186,7 +186,7 @@ def build_leaderboard_champion_discord_embed(game, mode, rank1_entry, rank2_entr
             "text": "Official CubeCraft Bedrock Leaderboard Telemetry",
             "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
         },
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": datetime.utcnow().isoformat() + "+00:00"
     }
 
     payload = {
@@ -255,7 +255,7 @@ def build_server_status_discord_embed(online_count, peak_window="16:00 - 21:00 U
             "text": "Live Telemetry • CubeCraft Bedrock Community Hub",
             "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
         },
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": datetime.utcnow().isoformat() + "+00:00"
     }
 
     payload = {
@@ -335,7 +335,7 @@ def build_map_tactics_discord_embed(map_data):
             "text": "CubeCraft Bedrock Mode & Maps Strategy Guide",
             "icon_url": "https://mc-heads.net/avatar/CubeCraft/64"
         },
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": datetime.utcnow().isoformat() + "+00:00"
     }
 
     payload = {

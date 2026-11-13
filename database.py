@@ -10,6 +10,7 @@ import json
 import os
 import urllib.request
 import re
+import time
 from datetime import datetime, timedelta
 import schematics
 
@@ -904,6 +905,136 @@ def get_server_tracker_stats():
         "best_for_matchmaking": "16:00 - 21:00 UTC (Fast queues, high competitive lobbies)",
         "best_for_grinding": "04:00 - 08:00 UTC (Less lobby competition, smoother win streaks)"
     }
+
+_db_online_cache = {
+    "count": 6000,
+    "last_fetched": 0
+}
+
+def get_live_online_count():
+    """Fetches real online count from CubeCraft status API with 30s in-memory caching."""
+    now = time.time()
+    if now - _db_online_cache["last_fetched"] < 30:
+        return _db_online_cache["count"]
+
+    try:
+        req = urllib.request.Request('https://api.cc-data.ru/bedrock/status', headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            status_data = json.loads(resp.read().decode('utf-8'))
+            if isinstance(status_data, list) and len(status_data) > 0:
+                for entry in status_data:
+                    if entry.get('name') == 'online':
+                        val = int(entry.get('value', 6000))
+                        _db_online_cache["count"] = val
+                        _db_online_cache["last_fetched"] = now
+                        log_server_status(val)
+                        return val
+            elif isinstance(status_data, dict) and 'online' in status_data:
+                val = int(status_data['online'])
+                _db_online_cache["count"] = val
+                _db_online_cache["last_fetched"] = now
+                log_server_status(val)
+                return val
+    except Exception:
+        pass
+
+    return _db_online_cache["count"]
+
+def search_marketplace_items(query="", category="all", sort_by="rating", limit=10, offset=0):
+    """Searches authentic marketplace items with category filtering and ordering."""
+    conn = get_db()
+    cursor = conn.cursor()
+    conditions = ["available = 1"]
+    params = []
+
+    if query and query.strip():
+        q_term = f"%{query.strip()}%"
+        conditions.append("(LOWER(name) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?) OR LOWER(search_name) LIKE LOWER(?))")
+        params.extend([q_term, q_term, q_term])
+
+    if category and category.lower() != "all":
+        conditions.append("LOWER(search_name) LIKE LOWER(?)")
+        params.append(f"%{category.lower()}%")
+
+    where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+    cursor.execute(f"SELECT COUNT(*) FROM marketplace {where_clause}", params)
+    total = cursor.fetchone()[0]
+
+    order = "rating DESC, price DESC"
+    if sort_by == "price_asc":
+        order = "price ASC"
+    elif sort_by == "price_desc":
+        order = "price DESC"
+
+    cursor.execute(f"SELECT * FROM marketplace {where_clause} ORDER BY {order} LIMIT ? OFFSET ?", params + [limit, offset])
+    rows = cursor.fetchall()
+    conn.close()
+
+    items = []
+    for r in rows:
+        cat_slug = r["search_name"].split("-")[0] if "-" in (r["search_name"] or "") else (r["search_name"] or "item")
+        items.append({
+            "id": r["id"],
+            "title": r["name"],
+            "description": r["description"] or "",
+            "price_minecoins": r["price"],
+            "rating": r["rating"] or 0.0,
+            "category": cat_slug,
+            "image_url": r["thumbnail"] or ""
+        })
+    return items, total
+
+def insert_encounter(player_gamertag, reviewer_name, sentiment, comment, game="EggWars", mode="Solo"):
+    """Logs an encounter review for a Bedrock competitor."""
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    sent_lower = sentiment.lower()
+    if "help" in sent_lower or "good" in sent_lower or "gg" in sent_lower:
+        rating = 5
+        clean_sentiment = "positive"
+        encounter_type = "Helpful Teammate" if "help" in sent_lower else "Good Game"
+    elif "tox" in sent_lower or "team" in sent_lower or "hack" in sent_lower:
+        rating = 1
+        clean_sentiment = "negative"
+        encounter_type = "Toxic / Unsportsmanlike" if "tox" in sent_lower else ("Hacker Alert" if "hack" in sent_lower else "Teaming")
+    else:
+        rating = 3
+        clean_sentiment = "neutral"
+        encounter_type = "Neutral Encounter"
+
+    cursor.execute("SELECT gamertag FROM players WHERE LOWER(gamertag) = LOWER(?)", (player_gamertag.strip(),))
+    if not cursor.fetchone():
+        cursor.execute("""
+            INSERT INTO players (gamertag, raw_name, rank_title, avatar_color, bio, first_seen)
+            VALUES (?, ?, 'Bedrock Competitor', '#00e5ff', 'Discovered through Discord review.', ?)
+        """, (player_gamertag.strip(), player_gamertag.strip(), datetime.utcnow().strftime("%Y-%m-%d")))
+        conn.commit()
+
+    cursor.execute("""
+        INSERT INTO encounters (player_gamertag, reviewer_name, game_played, encounter_type, sentiment, rating, comment, helpful_votes, reported, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)
+    """, (player_gamertag.strip(), reviewer_name.strip(), game, encounter_type, clean_sentiment, rating, comment.strip(), now_str))
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return True, {"message": "Encounter registered successfully!", "id": new_id}
+
+def get_player_encounters(gamertag, limit=10):
+    """Retrieves recent reviews for a competitor."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM encounters
+        WHERE LOWER(player_gamertag) = LOWER(?) AND reported = 0
+        ORDER BY id DESC
+        LIMIT ?
+    """, (gamertag.strip(), limit))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
 
 # ==========================================
 # Official Bedrock Mode & Maps Strategy Guide
