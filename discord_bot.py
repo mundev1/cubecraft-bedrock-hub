@@ -65,7 +65,9 @@ GUILD_ID_RAW = os.getenv("DISCORD_GUILD_ID", "").strip()
 TEST_GUILD_ID = int(GUILD_ID_RAW) if GUILD_ID_RAW.isdigit() else None
 
 intents = discord.Intents.default()
-intents.message_content = True
+# Enable message_content only if explicitly requested in .env (requires Privileged Gateway Intent toggle in Developer Portal)
+if os.getenv("ENABLE_MESSAGE_CONTENT", "false").lower() == "true":
+    intents.message_content = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
