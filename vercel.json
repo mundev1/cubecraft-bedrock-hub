@@ -1,17 +1,22 @@
 {
+  "version": 2,
   "functions": {
     "api/**/*.py": {
       "includeFiles": "{cubecraft.db,bedrock_leaderboards_snapshot.json,bedrock_marketplace_snapshot.json,static/**,*.py}"
     }
   },
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/interactions",
-      "destination": "/api/interactions"
+      "src": "/api/interactions",
+      "dest": "api/interactions.py"
     },
     {
-      "source": "/(.*)",
-      "destination": "/api/index?__path=/$1"
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "api/index.py"
     }
   ]
 }
